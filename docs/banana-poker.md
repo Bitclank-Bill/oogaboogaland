@@ -475,7 +475,7 @@ is claimed. `poker-themes.js` holds the room's one palette and light record
 ## The floor
 
 A crowd walks the floor, all dressed for an evening at a grand
-casino. Every character is invented: every name ends in `/ember-den`, so none
+casino. Every character is invented: every name ends in `/emberden`, so none
 can match a GitHub login, none is registered as a character or joins the
 roster, and no display name is a contributor's handle.
 

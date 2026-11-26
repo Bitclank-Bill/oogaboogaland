@@ -30,7 +30,7 @@
 
   // One invented figure for the seven statues, so the head and face are the same blocks every time. Its traits are made
   // fresh for each build (the build draws from `rand`), never hashed from a person's name.
-  const STATUE_NAME = "statue/ember-den";
+  const STATUE_NAME = "statue/emberden";
   const DRESS = Object.freeze({
     // A toga over the whole trunk, a fold falling from the left shoulder across it.
     torso(k, v) {

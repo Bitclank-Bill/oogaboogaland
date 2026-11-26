@@ -5031,7 +5031,7 @@ const deferredLoadingChecks = async () => {
     const waitsForLoad = !settled;
     script.onload(); await pending;
     rows.push({ path: `${id} helpers precede their scene`, ok: beside && held && ordered && waitsForLoad && settled
-      && scene === f.shell && (id === "poker" ? typeof scene.enter === "function" && scene.voiceZone === "ember-den" : f.shell.enter === enter) && f.BL.deferred.load(group) === null && !f.links().length && !f.timers.size });
+      && scene === f.shell && (id === "poker" ? typeof scene.enter === "function" && scene.voiceZone === "emberden" : f.shell.enter === enter) && f.BL.deferred.load(group) === null && !f.links().length && !f.timers.size });
   }
   // After a deploy the hashed file is gone: the error is probed, found 404, marked stale and reported once.
   {
@@ -19450,6 +19450,20 @@ const donationClientChecks = async () => {
   const closedDonate = routeHistory.url === "/" && routeDocument.title === "Home" && routeHistory.state.place === null;
   record("donate route: closing its popup replaces the place with hub home, including URL, title and history state",
     enteredDonate && closedDonate, JSON.stringify({ enteredDonate, closedDonate, url: routeHistory.url, title: routeDocument.title }));
+  // The address follows the visitor's zone: walking into another zone of the scene replaces it with that zone's route,
+  // in place; the land between (no route) leaves it; a place standing in a zone keeps its own address within that zone.
+  {
+    const zoned = { list: [{ path: "", scene: "hub", zone: "outside", title: "Home" }, { path: "bca", scene: "hub", place: "bca", zone: "outside", title: "B.C.A." },
+      { path: "rainforest", scene: "hub", place: "rainforest", zone: "rainforest", title: "Rainforest" }], title: entry => entry.title };
+    const zoneRouter = routeContext.window.BL.router.create({ hub: {} }, zoned, () => true);
+    zoneRouter.arrive("hub", "bca", true);
+    const kept = zoneRouter.follow("hub", "outside") === null && routeHistory.url === "/bca";
+    const moved = zoneRouter.follow("hub", "rainforest")?.place === "rainforest" && routeHistory.url === "/rainforest" && routeHistory.state.place === "rainforest" && routeDocument.title === "Rainforest";
+    const between = zoneRouter.follow("hub", "between") === null && routeHistory.url === "/rainforest";
+    const home = zoneRouter.follow("hub", "outside")?.path === "" && routeHistory.url === "/" && routeHistory.state.place === null && routeDocument.title === "Home";
+    record("router: the address follows the visitor's zone in place, a place keeping its own address within its zone and the last one over the land between",
+      kept && moved && between && home, JSON.stringify({ kept, moved, between, home, url: routeHistory.url }));
+  }
   // Back pressed while a trip is still building: the director refuses the second trip, so the router queues it and
   // takes it once that trip settles, never dropping it.
   {
@@ -37172,7 +37186,7 @@ scene("poker", { query: "character=portlandhodl", steps: [{ name: "poker floor a
     t0.leave("guest-x"); t0.join(swapId, swapName, true, swapSeat); const back = figures(); rooted.push(onRoot());
     // Re-pinned (Ask Ooga To Move): Add bots stops at five computer opponents a table, so four seats stay open for
     // players; it seated eight before.
-    const dressed = { before, gone, after, rooted, ok: bots.length === 5 && cast.length === 5 && cast.every(n => n.endsWith("/ember-den") && !walking.has(n)) &&
+    const dressed = { before, gone, after, rooted, ok: bots.length === 5 && cast.length === 5 && cast.every(n => n.endsWith("/emberden") && !walking.has(n)) &&
       new Set(cast).size === 5 && gone.every(n => n === null) && after.join() === before.join() && back.join() === before.join() && rooted.join() === "5,0,5,4,0,5" };
     // Each seat's face as the panel shows it: null when hidden, else how many pixels carry ink (alpha above 0) and an
     // FNV-1a hash of every pixel, so two faces differ when any pixel does. Read through a willReadFrequently copy, since
@@ -41476,10 +41490,10 @@ const pokerChecks = (BL) => {
     }
   }
   {
-    // Rule (privacy): every cast member is invented. Its name (`<id>/ember-den`) can be no GitHub login, and neither its
+    // Rule (privacy): every cast member is invented. Its name (`<id>/emberden`) can be no GitHub login, and neither its
     // id nor its display name is any contributor's handle or login; no two share a name or a display name.
     const C = BL.pokerCrowdModels, handles = new Set(BL.characters.all().flatMap(c => [c.handle, c.github].filter(Boolean).map(h => h.toLowerCase())));
-    const names = C.CAST.map(m => m.rig === "caveman" ? m.traits.name : m.id + "/ember-den");
+    const names = C.CAST.map(m => m.rig === "caveman" ? m.traits.name : m.id + "/emberden");
     const displays = C.CAST.filter(m => m.rig === "caveman").map(m => m.traits.display);
     const pick = (d, n) => C.castFor(d, n).map(m => m.id).join();
     // The floor at each cap: exactly the staff `staffFor` names, the rest guests, never an opponent or a lounge
@@ -41491,7 +41505,7 @@ const pokerChecks = (BL) => {
     let nested = true;
     for (let d = 20000; d < 20030; d++) { const full = new Set(C.castFor(d, 64)); for (const n of [6, 12, 18, 24, 30, 40, 48]) nested &&= C.castFor(d, n).every(m => full.has(m)); }
     record("poker crowd cast (privacy): every member invented, no name or display name a contributor's handle or login, the same every time and different each day",
-      new Set(names).size === names.length && names.every(n => n.endsWith("/ember-den") && !handles.has(n.split("/")[0].toLowerCase())) &&
+      new Set(names).size === names.length && names.every(n => n.endsWith("/emberden") && !handles.has(n.split("/")[0].toLowerCase())) &&
       new Set(displays).size === displays.length && displays.every(d => !handles.has(d.toLowerCase()) && !BL.characters.get(d)) &&
       pick(20000, 48) === pick(20000, 48) && pick(20000, 48) !== pick(20001, 48) && C.seatTraits(3, 4).name === C.seatTraits(3, 4).name,
       JSON.stringify({ cast: names.length, clash: displays.filter(d => handles.has(d.toLowerCase())) }));
@@ -41886,14 +41900,14 @@ const pokerChecks = (BL) => {
     }
     record("poker crowd seats: the twelve opponents build, each under its own name and each looking unlike the rest",
       players.length === 12 && playerNames.size === 12 && built === 12 && thrown === null && alike.length === 0 &&
-      players.every((m, i) => m.id === "player-" + (i + 1) && m.traits.name === m.id + "/ember-den"), JSON.stringify({ built, thrown, alike }));
+      players.every((m, i) => m.id === "player-" + (i + 1) && m.traits.name === m.id + "/emberden"), JSON.stringify({ built, thrown, alike }));
     // Rule: only a computer opponent is cast; a human in the same seat shows the stand-in, so a seat changing hands
     // between frames changes the figure's traits, which is what the scene rebuilds on.
     let humans = true, bots = true;
     for (let t = 0; t < 10; t++) for (let s = 0; s < 9; s++) {
       const bot = C.seatFigure(t, s, true), human = C.seatFigure(t, s, false);
-      humans &&= human.name === "Banana Bot " + s && !human.name.endsWith("/ember-den") && !BL.characters.get(human.name) && human === C.seatFigure(t, s, false);
-      bots &&= bot === C.seatTraits(t, s) && bot.name.endsWith("/ember-den") && bot !== human;
+      humans &&= human.name === "Banana Bot " + s && !human.name.endsWith("/emberden") && !BL.characters.get(human.name) && human === C.seatFigure(t, s, false);
+      bots &&= bot === C.seatTraits(t, s) && bot.name.endsWith("/emberden") && bot !== human;
     }
     record("poker crowd seats: a human seat never shows a cast member and a seat changing hands changes its figure", humans && bots, JSON.stringify({ humans, bots }));
   }
@@ -46234,17 +46248,17 @@ const playersTabChecks = async BL => {
   const context = { window: { BL: {} } };
   runInNewContext(readFileSync(join(root, "src/js/zone-map.js"), "utf8"), context);
   const Z = context.window.BL.zoneMap;
-  const steps = [["outside", "rainforest", "rainforest"], ["outside", "factory.hall", "factory"], ["outside", "factory.hangar", "factory"], ["outside", "ember-den", "bifrost"],
+  const steps = [["outside", "rainforest", "rainforest"], ["outside", "factory.hall", "factory"], ["outside", "factory.hangar", "factory"], ["outside", "emberden", "bifrost"],
     ["outside", "dsb-studio", "bifrost"], ["outside", "scene-race", "arcade"], ["outside", "scene-skee", "arcade"], ["outside", "sphere-4", "sphere"], ["outside", "hq", "hq"],
     ["factory", "factory.hangar", "factory.hall"], ["factory.hangar", "outside", "factory.hall"], ["factory.hangar", "arcade.hall", "factory.hall"], ["lab", "rainforest", "outside"],
-    ["bifrost.chamber", "ember-den", "ember-den"], ["ember-den", "dsb-maxis", "bifrost.chamber"], ["dsb-maxis", "dsb-studio", "dsb-outside"], ["sphere-4", "sphere-7", "sphere"],
+    ["bifrost.chamber", "emberden", "emberden"], ["emberden", "dsb-maxis", "bifrost.chamber"], ["dsb-maxis", "dsb-studio", "dsb-outside"], ["sphere-4", "sphere-7", "sphere"],
     ["between", "factory.hall", "factory"], ["between", "rainforest", "rainforest"], ["factory.hall", "between", "factory"], ["outside", "none", null], ["none", "outside", null], ["scene-transition", "lab", null], ["lab", "lab", null], ["outside", "made-up", null], ["outside", "constructor", null], ["constructor", "lab", null],
     ["outside", "ghost-arena", "arcade"], ["arcade.hall", "arcade-hunt", "arcade.haunt"], ["arcade.haunt", "ghost-arena", "ghost-arena.haunt"], ["ghost-arena", "arcade.hall", "ghost-arena.haunt"], ["arcade-hunt", "outside", "ghost-arena"], ["outside", "hq-basement", "hq"], ["outside", "rainforest-under", "rainforest"], ["hq-basement", "lab.hall", "outside"], ["rainforest-under", "factory.hall", "outside"]];
   const routed = steps.map(([from, to, want]) => ({ from, to, want, got: Z.next(from, to) })).filter(r => r.got !== r.want);
   record("players tab routes: the first step between zones goes down toward the target or up toward the island (Factory before the hangar, ₿IFRÖST before the Ember Den and DSB Land, the Arcade before its games), and nowhere has no route",
     routed.length === 0, JSON.stringify(routed));
   const lands = { outside: "The Island", "factory.hall": "Lightning Factory", "factory.hangar": "Lightning Jet Hangar", "arcade.hall": "Ooga Arcade", "bifrost.chamber": "\u20bfIFR\u00d6ST chamber",
-    sphere: "Timechain Exterior", "sphere-3": "TCS \u00b7 Room 3", rainforest: "Mempool Rainforest", "rainforest-under": "Mempool Cave", hq: "HQ", "hq-basement": "Basement", "dsb-maxis": "DSB Land", none: "Between lands", between: "Between lands", "ember-den": "Ember Den",
+    sphere: "Timechain Exterior", "sphere-3": "TCS \u00b7 Room 3", rainforest: "Mempool Rainforest", "rainforest-under": "Mempool Cave", hq: "HQ", "hq-basement": "Basement", "dsb-maxis": "DSB Land", none: "Between lands", between: "Between lands", "emberden": "Ember Den",
     "arcade.haunt": "Ooga Arcade", "ghost-arena.haunt": "Ghost Hunter's Arena", "ghost-arena": "Ghost Hunter's Arena", "arcade-hunt": "Ghost Hunter's Arena" };
   const headings = { outside: "The Island", lab: "The Island", bca: "The Island", factory: "The Island", arcade: "The Island", mirror: "The Island", "cave-c9": "The Island", "factory.hall": "Lightning Factory", "arcade.hall": "Ooga Arcade",
     "arcade.haunt": "Ooga Arcade", "ghost-arena.haunt": "Ghost Hunter's Arena", "ghost-arena": "Ghost Hunter's Arena", "arcade-hunt": "Ghost Hunter's Arena",
