@@ -35,6 +35,8 @@
       Object.assign(camera.position,{x:at.x,y:1.42,z:at.z+4.10});
       Object.assign(camera.target,{x:at.x-.13,y:Math.min(1.63,Math.max(.96,h*.59)),z:at.z+.94});
       camera.fov=55*Math.PI/180;camera.up=null;camera.orthoMix=0;
+      // The pilot judged the head from its own eye (inside it in first person); judge it again from the lens.
+      pilot.syncHeadVisibility(actor);
     };
     const open=()=>{
       const actor=pilot.player;
