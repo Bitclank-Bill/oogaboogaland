@@ -10,7 +10,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 
 const hash = (text, encoding) => createHash("sha256").update(text, "utf8").digest(encoding);
-export function externalizeModules(html, out, deferred, block, terrainWorker = null, transform = (src, text) => text, inline = [], micFilter = null) {
+export function externalizeModules(html, out, deferred, block, terrainWorker = null, transform = (src, text) => text, inline = [], micFilter = null, keepGeometry = null) {
   const script = html.match(/<script>([\s\S]*?)<\/script>/);
   if (!script) throw new Error("distribution: no inline script");
   const oldPolicy = `script-src 'sha256-${hash(script[1], "base64")}'`;
@@ -46,7 +46,9 @@ export function externalizeModules(html, out, deferred, block, terrainWorker = n
   }
   const worker = terrainWorker ? `window.BL.terrainWorker = ${JSON.stringify(terrainWorker)};\n` : "";
   const filter = micFilter ? `window.BL.micFilter = ${JSON.stringify(micFilter)};\n` : "";
-  const updated = `\nwindow.BL = window.BL || {};\nwindow.BL.deferredScripts = ${JSON.stringify(named)};\n${worker}${filter}${body.replace(/^\n/, "")}`;
+  // Valhodl's baked geometry (scripts/distribution-keep.mjs), which src/js/keep-snapshot.js fetches as the land is entered.
+  const keep = keepGeometry ? `window.BL.keepGeometry = ${JSON.stringify(keepGeometry)};\n` : "";
+  const updated = `\nwindow.BL = window.BL || {};\nwindow.BL.deferredScripts = ${JSON.stringify(named)};\n${worker}${filter}${keep}${body.replace(/^\n/, "")}`;
   return html.replace(script[0], () => `<script>${updated}</script>`)
     .replace(oldPolicy, `script-src 'self' 'sha256-${hash(updated, "base64")}'`);
 }
@@ -88,7 +90,7 @@ export function externalizePage(html, out, block, data = []) {
 // under `img-src 'self' data:`. Each becomes art/<module>-<sha256>.<ext> holding the same bytes, so a bundle or the
 // page carries only the address, and the picture is fetched only when a menu or a title card shows it.
 export const PICTURE_MODULES = ["js/without-rulers-data.js", "js/stackchain-art.js", "js/proof-of-ink-data.js", "js/meme-factory-data.js",
-  "js/cloud-hopper-art.js"];
+  "js/cloud-hopper-art.js", "js/keep-icon-data.js", "js/bifrost-valhodl-art.js"];
 export function externalizePictures(src, text, out) {
   mkdirSync(join(out, "art"), { recursive: true });
   let count = 0;

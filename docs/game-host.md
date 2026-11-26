@@ -152,6 +152,18 @@ Each landed round goes back in the next motion frame's confirmations.
 where its player stands. The page also decides how far its round went before scenery stopped it: the server keeps
 that length only for aiming the monkeys and tests the round's whole reach, through the totems too.
 
+## Valhodl (the Byzantine Keep)
+
+`worker/src/games/keep.js` hosts a land rather than a match: kind `keep` at the venue `keep`, one object
+(`keep:keep:v1`) holding Valhodl's (the Byzantine Keep's) quest state. It runs `src/js/keep-rules.js` unchanged.
+
+- **Messages.** `act { id, part }` works one part of a puzzle; `here` says a page is still in the land, once a minute.
+- **No tick.** `running` is always false, so the object has no timer: it wakes for a message and sleeps again.
+- **What is kept.** While anything has been touched, each change and each `here` saves the rules' snapshot, so the
+  land keeps its open passages while anyone is there and for `RESUME_MS` after the last has gone. `here` also sends
+  the state round again, which puts a page right after the object restarted under it. The record names no account.
+- **What stays on the room.** Presence, poses and voice, as for every scene.
+
 ## Cost
 
 Measured in Node, a four-player hunt's rules take 0.03 ms a tick, about 0.5 ms of CPU a second. Durable Object CPU is

@@ -31,7 +31,9 @@ const VENUE_ZONES = { "dsb-studio": "dsb-studio", "maxis-club": "dsb-maxis", "wi
 const WINDOW_PLACES = {
   dsb: { land: "dsb", zones: ["dsb-outside", "dsb-transit"] },
   poker: { land: "ember", zones: ["ember-den"], blurb: "A poker room of ten tables by the fire, reached through ₿IFRÖST.",
-    objects: [{ cls: "Service", name: "poker service", note: "its tables run on a service of their own, not a Durable Object" }] }
+    objects: [{ cls: "Service", name: "poker service", note: "its tables run on a service of their own, not a Durable Object" }] },
+  keep: { land: "keep", zones: ["byzantine-keep", "byzantine-keep.halls"], blurb: "Valhodl: islands in a dark sea under a night sky, reached through ₿IFRÖST: Portal Island, a rowboat over to Castle Island and its keep, the Shipyard, the Armory & Forge and CBDC.",
+    objects: [{ cls: "GameHost", prefix: "keep:" }] }
 };
 // The carnival machines' names (arcade-games.js keeps them inside each game's code).
 const CARNIVAL = ["Thro-ball", "Hoop Shot", "Coconut Toss", "Claw Machine", "Air Hockey", "Pool", "Darts", "Pinball", "Kiddie rides"];

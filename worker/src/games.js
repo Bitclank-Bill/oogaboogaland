@@ -6,8 +6,12 @@
 // `<kind>:<venue>:v<version>`. A new version starts fresh objects, which is also how one moves: a Durable Object stays
 // where it was first made.
 import { ghostHunt } from "./games/ghost-hunt.js"; // HALLOWEEN
+import { keep } from "./games/keep.js";
 
-export const GAME_KINDS = new Map([[ghostHunt.id, ghostHunt]]); // HALLOWEEN
+export const GAME_KINDS = new Map([
+  [ghostHunt.id, ghostHunt], // HALLOWEEN
+  [keep.id, keep]
+]);
 
 /** The object name for `kind` at `venue`, or "" when the Worker hosts no such game. */
 export const gameName = (kind, venue) => {

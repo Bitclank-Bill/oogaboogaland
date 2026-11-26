@@ -24,7 +24,7 @@ import { handleTotems } from "./totems.js";
 import { handleRepoTotems } from "./repo-totems.js";
 import { gameName } from "./games.js";
 import { handleInspect } from "./inspect.js";
-import { handleLectureAudio } from "./lecture-audio.js";
+import { handleKeepMusic, handleLectureAudio } from "./lecture-audio.js";
 import { inspectEdge } from "./inspect-report.js";
 
 export { Room } from "./room.js";
@@ -126,6 +126,7 @@ export default {
     if (url.pathname.startsWith("/game/")) return handleGame(request, env, url, ctx);
     if (url.pathname.startsWith("/donations/")) return handleDonations(request, env, url);
     if (url.pathname.startsWith("/media/lectures/")) return handleLectureAudio(request, env, url, ctx);
+    if (url.pathname.startsWith("/media/keep/")) return handleKeepMusic(request, env, url, ctx);
     return env.ASSETS.fetch(request);
   },
 

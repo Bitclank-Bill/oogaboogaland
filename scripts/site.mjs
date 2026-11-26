@@ -26,6 +26,7 @@ import { MAP_ENTRY, stageMap } from "./distribution-map.mjs";
 import { PICTURE_MODULES, externalizeModules, externalizePage, externalizePictures } from "./distribution-modules.mjs";
 import { writeTerrainWorker } from "./distribution-terrain.mjs";
 import { writeMicFilter } from "./distribution-mic.mjs";
+import { writeKeepGeometry } from "./distribution-keep.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const out = resolve(root, process.argv[2] || "untracked/site");
@@ -66,7 +67,7 @@ if (process.argv.includes("--audio-assets")) shell = externalizeAudio(shell, roo
 const pictures = process.argv.includes("--image-assets");
 // A picture module outside every data-defer group stays in the page's own script and is rewritten there.
 const inlinePictures = pictures ? PICTURE_MODULES.filter((src) => ![...deferred.values()].some((sources) => sources.includes(src))) : [];
-shell = externalizeModules(shell, out, deferred, block, writeTerrainWorker(root, out), pictures ? (src, text) => PICTURE_MODULES.includes(src) ? externalizePictures(src, text, out) : text : undefined, inlinePictures, writeMicFilter(root, out));
+shell = externalizeModules(shell, out, deferred, block, writeTerrainWorker(root, out), pictures ? (src, text) => PICTURE_MODULES.includes(src) ? externalizePictures(src, text, out) : text : undefined, inlinePictures, writeMicFilter(root, out), writeKeepGeometry(root, out));
 if (process.argv.includes("--page-assets")) shell = externalizePage(shell, out, block, ["js/jumbotron-data.js"]);
 if (shell.split("</title>").length !== 2 || shell.split("</head>").length !== 2) throw new Error("oogaboogaland.html: expected one <title> and one </head>");
 
