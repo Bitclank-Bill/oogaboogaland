@@ -76,9 +76,9 @@ voice: nothing said on it is heard in OC, and nothing said in a chat is heard on
 
 - A listener's footer reads **Request to speak** where it read Join Voice; pressed, it reads **Requested · Cancel**.
   A requester's tile carries a small microphone badge. The raised hand keeps its meaning for speakers only.
-- The host and co-hosts see a **Requests N** chip in the chat's title; it opens the queue in the panel's own flow under
-  the chat's bar (pushing the roster down, never covering it, and scrolling itself in a short panel), oldest first, each row with
-  Approve and Decline. A tile's menu (press a tile, or Enter on the focused tile) offers what the viewer's role allows:
+- The host and co-hosts see a **Requests** bell with its count in the chat's bar; it drops the queue from the bar over
+  the top of the live view (never pushing the view or the roster, and scrolling itself past what the panel has room
+  for), oldest first, each row with Approve and Decline, and under it everyone removed from the chat with Allow back. A tile's menu (press a tile, or Enter on the focused tile) offers what the viewer's role allows:
   Invite to speak (Approve request to speak and Decline request for someone who asked), Mute, Move to listener, Make co-host (dimmed with "All 3 co-host slots are taken" while every slot is
   held), Withdraw co-host invitation, Make speaker (a co-host on stage; Make listener off it), Make host, Remove from chat.
   A tile holding an offer carries an outlined star on a purple badge and reads "invited to co-host" (one asking an amber microphone badge, one invited to speak a green one). The person offered gets a card, **The
@@ -122,8 +122,8 @@ editable, at most 60 characters, checked by the island's chat policy) and three 
 only** first (chosen first in Ooga Chat), Main Island and DSB Land. Voice only is a chat with no land (zone `none`: Ooga Chat voice alone, never a
 copy, clouds or Go there), then Start chat (the one amber action) or Cancel. The island's panel opens the
 same dialog with the zone the visitor's Ooga stands in chosen first. A chat opens the panel the app has today (`audience-tiles.js` roster, the emoji bar,
-the footer) with a Back to chats control, the Requests bell for a host or co-host (in the panel's top right corner,
-to the right of the zone tag), a role badge on host and co-host
+the footer) with a Back to chats control, the Requests bell for a host or co-host (in the chat's bar, left of Share; the chat's land tag stands in the live
+view's top right corner beside its fold button), a role badge on host and co-host
 tiles, and the footer's Request to speak or, for a host, End chat beside Leave chat.
 
 **Back to chats keeps the chat.** It shows the list over the chat, which goes on playing, its voice and the visitor's

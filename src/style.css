@@ -2131,6 +2131,11 @@ body[data-active-scene="block"] .mode-hud {
   margin-top: 8px;
 }
 
+/* In a panel's foot the card stands as close as Ooga Chat's own panels put it, in every panel of both apps: 8px off the
+   panel's sides and 6px from the list over it and the account row under it, through the island panel's wider padding
+   (14px) and gap (10px). */
+.panel-foot > .reactions { margin: -4px -6px 0; }
+
 .reactions[hidden] { display: none; }
 
 /* The foot of every panel with the emoji bar, on the island and in Ooga Chat's app alike: the bar over the account row
@@ -2143,7 +2148,7 @@ body[data-active-scene="block"] .mode-hud {
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 10px 16px;
+  gap: 6px 16px;
 }
 
 .panel-foot > * { flex: 1 1 100%; min-width: 0; }
@@ -2152,7 +2157,7 @@ body[data-active-scene="block"] .mode-hud {
 @container panel-foot (min-width: 960px) {
   .panel-foot > * { flex: 0 1 auto; margin-top: 8px; }
   .panel-foot > .account { flex: 0 1 auto; }
-  .panel-foot > .reactions { flex-basis: 560px; }
+  .panel-foot > .reactions { flex-basis: 560px; margin: 8px 0 0; }
 }
 
 .reaction-bar {

@@ -961,6 +961,9 @@
       const place = !!isle && !!room && !browsing && room.zone === "main", seen = place && shown() && !document.hidden && !isle.folded;
       const want = seen && people.some((p) => p.walking || p.role === "speaker");
       set(strip, "hidden", !place);
+      set(landTag, "hidden", !place);
+      if (place && landTag.title !== ZONE_NAMES[room.zone]) tagged(landTag, room.zone);
+      node.classList.toggle("hc-land-in-view", place);
       // The one live region floats over the island view while there is one, so a notice takes no room over the roster.
       // Folded, the view is out of sight: the notice floats over the roster instead.
       const over = place && !isle.folded;
@@ -991,7 +994,11 @@
     // The strip over the roster: the island view, in every Main Island chat.
     const strip = make("div", "hc-room-strip");
     strip.hidden = true;
-    if (isle) { strip.append(isle.node); isle.stage.append(goTo); }
+    // The chat's land, on its island view beside the full-screen button rather than in the bar (`hc-land-in-view`); a
+    // chat with no view keeps it in the title.
+    const landTag = make("span", "iv-land-tag");
+    landTag.hidden = true;
+    if (isle) { strip.append(isle.node); isle.stage.append(goTo, landTag); }
     space.parts.list.before(strip);
     space.parts.list.after(alone);
     node.append(starter.node, preview);
@@ -1010,7 +1017,8 @@
       offGo();
       isle?.dispose();
       space.setMenu(null);
-      for (const el of [bar, dock, noticeHost, list, strip, invite, offer, pop, goTo, ask, end, leave, requests, share, alone, starter.node, preview]) el.remove();
+      for (const el of [bar, dock, noticeHost, list, strip, invite, offer, pop, goTo, landTag, ask, end, leave, requests, share, alone, starter.node, preview]) el.remove();
+      node.classList.remove("hc-land-in-view");
     };
     // The footer's End chat and Leave chat for a page's other panels while the visitor is in a chat (Ooga Chat's list
     // tabs, ooga-chat-panels.js `accountRow`), asking from `at` as the chat's own buttons ask.
