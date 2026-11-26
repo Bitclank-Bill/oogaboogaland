@@ -3,7 +3,8 @@
   "use strict";
   const BL=window.BL;
   const create=(camera,pilot,canvas,stand)=>{
-    const at=BL.pokerClub.booth, dialog=document.createElement("dialog"), controls=document.createElement("div");
+    // The pet stands on the Ooga's open side of the frame, a little forward of it, turned to the lens (`pose`'s camera).
+    const at=BL.pokerClub.booth, petX=at.x+.22, petZ=at.z+1.12, petSpot=Object.freeze({x:petX,z:petZ,yaw:Math.atan2(at.x-petX,at.z+4.10-petZ)}), dialog=document.createElement("dialog"), controls=document.createElement("div");
     dialog.className="den-portrait";dialog.setAttribute("aria-label","Moon portrait studio");
     controls.className="den-optics";dialog.append(controls);document.body.append(dialog);
     const button=(label,action)=>{
@@ -20,6 +21,7 @@
       const s=saved; saved=null; serial++; pending=false; release(); stand.visible=true; dialog.close();
       pilot.setActive(true);pilot.navigate({position:s.feet,yaw:s.yaw,pitch:s.pitch,dist:s.dist});
       s.actor.root.visible=s.visible; s.actor.root.cameraHidden=s.cameraHidden;
+      if(s.actor.pet)s.actor.pet.hold=null;
       Object.assign(camera.position,s.eye);Object.assign(camera.target,s.look);
       camera.up=s.up;camera.orthoMix=s.mix;camera.fov=s.fov;
     };
@@ -42,6 +44,8 @@
         pitch:Math.atan2(dy,Math.hypot(dx,dz)),dist:Math.hypot(dx,dy,dz),visible:actor.root.visible,cameraHidden:actor.root.cameraHidden,
         eye:{...camera.position},look:{...camera.target},up:camera.up,mix:camera.orthoMix,fov:camera.fov};
       pilot.navigate({position:{x:at.x-.48,y:0,z:at.z+.97},yaw:Math.PI,pitch:.1,dist:2.4});
+      // Its trailing spot would be inside the backdrop, so the pet is held beside the Ooga, facing the camera, until close.
+      if(actor.pet)actor.pet.hold=petSpot;
       stand.visible=false;pilot.setActive(false);take.disabled=false;take.textContent="Take portrait";dialog.showModal();pose();
     };
     const afterDraw=()=>{
