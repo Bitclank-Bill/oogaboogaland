@@ -343,11 +343,12 @@ test("the bridge's `display`: an eligible contributor's Commons name becomes the
   // Saved, it is announced live: the island's Room, Ooga Chat's audience and every live hosted chat (renames.js).
   await db.prepare("UPDATE players SET banned_at = NULL WHERE id = 1").run();
   const told = [];
-  const announced = { ...env, ROOM: { getByName: () => ({ renamed: async (id, d) => { told.push(["room", id, d]); } }) },
+  const announced = { ...env, ROOM: { getByName: (name) => ({ renamed: async (id, d) => { told.push([`room ${name}`, id, d]); } }) },
     AUDIENCE: { getByName: (name) => ({ renamed: async (id, d) => { told.push([name, id, d]); } }) },
     CHATS: { getByName: () => ({ ids: async () => ["c1"] }) } };
   await run({ display: "Amy Live" }, principal(1, "amy"), announced);
-  assert.deepEqual(told.sort(), [["audience", "gh:1", "Amy Live"], ["chat:c1", "gh:1", "Amy Live"], ["room", 1, "Amy Live"]]);
+  assert.deepEqual(told.sort(), [["audience", "gh:1", "Amy Live"], ["chat:c1", "gh:1", "Amy Live"], ["room chat:c1", 1, "Amy Live"], ["room island", 1, "Amy Live"]],
+    "the island's Room, each live chat's copy of the island, the public audience and each live chat");
   // One that can't be reached leaves the save standing.
   const broken = { ...announced, ROOM: { getByName: () => ({ renamed: async () => { throw new Error("away"); } }) } };
   assert.deepEqual(await run({ display: "Amy Again" }, principal(1, "amy"), broken), { display: "Amy Again" });

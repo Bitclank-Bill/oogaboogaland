@@ -1645,6 +1645,9 @@ export class Audience extends DurableObject {
     if (!p || typeof display !== "string" || !display || display.length > 50 || p.info.display === display) return { renamed: 0 };
     this.model.setInfo(identity, { display });
     for (const connId of p.conns.keys()) this.save(connId);
+    // A hosted chat's held speaker (disconnected, their place kept) lives in the stored quiet holds: written again, or a
+    // wake would bring the old name back at the new revision.
+    if (p.held) await this.saveQuiet();
     await this.flush();
     if (this.chat) this.listed();
     return { renamed: 1 };

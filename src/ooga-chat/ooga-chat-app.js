@@ -384,15 +384,15 @@
     };
     BL.oogaChatPortraits?.configure(() => adapter.contributors());
     // Renamed elsewhere (on the island, or in another of this account's tabs or devices: the Room's `renamed`, through
-    // the Commons): the footer shows the name at once, and this account's chosen name here is saved as it (the Commons
-    // name field's own path, once a name), so a later account check never brings back the old one.
-    let persistedName = "";
+    // the Commons): the footer shows the name at once, and the account is read again with the server asking the island
+    // for its name (`renamed`), so this account's chosen name here follows the island's and a later check keeps it. Never
+    // written back: the island's own save is the only one.
     town.subscribe((kind) => {
       if (kind !== "renamed") return;
       const name = town.state.you && town.state.you.display, s = state.session;
       if (!name || !s || s.identity.display === name) return;
       set({ session: { ...s, identity: { ...s.identity, display: name } } });
-      if (persistedName !== name && adapter.commonsName) { persistedName = name; Promise.resolve(adapter.commonsName(name)).catch(() => {}); }
+      if (state.auth === "checking") setTimeout(() => auth.check("renamed"), RENAME_AGAIN_MS); else auth.check("renamed");
     });
     const ctx = { actions, media, install: () => device.install(), reload: () => device.reload(), storageKey: (name) => storageKey(adapter.kind, name),
       demo: fixture ? adapter.demo : null, feed: feedOogas, commons: { model: town, send: (data) => !!member && member.send(data),

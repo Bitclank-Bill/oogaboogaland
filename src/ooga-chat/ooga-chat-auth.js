@@ -139,17 +139,19 @@
       set({ session: next, auth: status(next, now()), notice }, "start");
       schedule();
     };
-    // Checks the session again. A timer, a retry or a saved name (`rename`, whose footer shows it at once) always asks; a
+    // Checks the session again. A timer, a retry, a saved name (`rename`, whose footer shows it at once) or one renamed live
+    // elsewhere (`renamed`, which also has the server read the island's name again) always asks; a
     // return to the page or the network at most every RECHECK_MIN_MS. A passing stale window downgrades before the answer comes, and a lost session reads as expired.
     const check = async (why = "check") => {
       if (disposed || !boot || state.busy || state.auth === "checking") return;
       const at = now();
-      if (why !== "timer" && why !== "retry" && why !== "rename" && at - lastCheck < RECHECK_MIN_MS) return;
+      if (why !== "timer" && why !== "retry" && why !== "rename" && why !== "renamed" && at - lastCheck < RECHECK_MIN_MS) return;
       lastCheck = at;
       const mine = ++ticket;
       if (state.session) set({ auth: status(state.session, at) }, "stale");
       try {
-        const next = await adapter.session(boot);
+        // Renamed live elsewhere: the server reads the island's name again (`refresh`).
+        const next = await adapter.session(boot, why === "renamed" ? { refresh: true } : undefined);
         if (mine === ticket && !disposed) adopt(next, why);
       } catch {
         if (mine === ticket && !disposed) set({ auth: state.session ? "error" : "signed-out", notice: state.session ? NOTICE.check : state.notice }, "error");
