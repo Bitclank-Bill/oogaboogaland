@@ -152,7 +152,7 @@ The hub works the zone out every frame from the driven Ooga or gorilla (`zoneOf`
 | `outside` | `/` | round the pile, or where the visitor last stood free in this browser |
 | `rainforest`, `rainforest-under` | `/rainforest`, `/mempool` | the bridge court off the vine bridge, looking in toward the lake; the chamber floor under the lake |
 | `bifrost`, `bifrost.chamber` | `/bifrost-isle`, `/bifrost` | the foot of the islet's gate stairs, facing out toward the bridge; the chamber |
-| `repos`, `sphere`, `sphere-0` … `sphere-7` | `/repos`, `/sphere`, `/sphere-0` … | Merge Rock's lip at its bridge's end; the Sphere's doors and keypad; a room's guided arrival |
+| `repos`, `sphere`, `sphere-0` … `sphere-8` | `/repos`, `/sphere`, `/sphere-0` … | Merge Rock's lip at its bridge's end; the Sphere's doors and keypad; a room's guided arrival |
 | `hq`, `hq-basement` | `/hq`, `/basement` | HQ's floor; the basement's floor |
 | `mirror` | `/observatory` | before the mirror, then taken in through it on the first frame |
 | `factory.hall`, `factory.hangar` | `/lightning`, `/jet` | the hall's and the hangar's own arrivals |
