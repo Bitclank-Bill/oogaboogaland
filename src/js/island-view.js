@@ -136,6 +136,8 @@
   const foldedSaved = () => { try { return localStorage.getItem(FOLD_KEY) === "1"; } catch { return false; } };
   const create = ({ picture, faceOf, loadLive = null, liveAllowed = () => true, scenery = "art", fullscreen = false, onFold = null }) => {
     const view = BL.islandViewData.main, state = walks();
+    // The picture's sea past the inner 4:3 the matrix maps to, each side (scripts/island-view.mjs `PAD`).
+    const PAD_X = view.pad ? view.pad[0] : 0, PAD_Y = view.pad ? view.pad[1] : 0;
     const node = document.createElement("div"), stage = document.createElement("div"), map = document.createElement("canvas");
     const reset = document.createElement("button"), full = document.createElement("button"), note = document.createElement("p");
     node.className = "iv";
@@ -174,8 +176,8 @@
     const image = new Image();
     image.decoding = "async";
     let pictureAsked = false;
-    // Beside the picture where the strip's shape differs from it: the picture's own sea edges spread out and blurred,
-    // so the sea runs on to the strip's ends. Made once a size.
+    // Past the picture where the strip is wider or taller still than its sea reaches: the picture's own sea edges
+    // spread out and blurred, so the sea runs on to the strip's ends. Made once a size.
     const back = document.createElement("canvas"), bg = back.getContext("2d"), EDGE = 16;
     let backFor = "";
     const paintBack = () => {
@@ -184,15 +186,18 @@
       if (key === backFor) return;
       backFor = key;
       back.width = map.width; back.height = map.height;
-      const k = Math.min(back.width / view.w, back.height / view.h), w = view.w * k, h = view.h * k, x = (back.width - w) / 2, y = (back.height - h) / 2;
+      // The whole picture, its sea round the inner 4:3 included, where the frame draws it; only past its edges, on a
+      // strip wider or taller still, its edges stretched and blurred.
+      const pw = view.w + PAD_X * 2, ph = view.h + PAD_Y * 2, k = Math.min(back.width / view.w, back.height / view.h);
+      const w = pw * k, h = ph * k, x = (back.width - view.w * k) / 2 - PAD_X * k, y = (back.height - view.h * k) / 2 - PAD_Y * k;
       bg.filter = "blur(10px)";
       if (x > 0) {
-        bg.drawImage(image, 0, 0, EDGE, view.h, -20, y, x + 40, h);
-        bg.drawImage(image, view.w - EDGE, 0, EDGE, view.h, x + w - 20, y, x + 40, h);
+        bg.drawImage(image, 0, 0, EDGE, ph, -20, y, x + 40, h);
+        bg.drawImage(image, pw - EDGE, 0, EDGE, ph, x + w - 20, y, x + 40, h);
       }
       if (y > 0) {
-        bg.drawImage(image, 0, 0, view.w, EDGE, x, -20, w, y + 40);
-        bg.drawImage(image, 0, view.h - EDGE, view.w, EDGE, x, y + h - 20, w, y + 40);
+        bg.drawImage(image, 0, 0, pw, EDGE, x, -20, w, y + 40);
+        bg.drawImage(image, 0, ph - EDGE, pw, EDGE, x, y + h - 20, w, y + 40);
       }
       bg.filter = "none";
     };
@@ -347,7 +352,7 @@
         offX = (width - view.w * fit) / 2; offY = (height - view.h * fit) / 2;
         paintBack();
         if (backFor) g.drawImage(back, 0, 0, width, height);
-        if (image.complete && image.naturalWidth) g.drawImage(image, offX, offY, view.w * fit, view.h * fit);
+        if (image.complete && image.naturalWidth) g.drawImage(image, offX - PAD_X * fit, offY - PAD_Y * fit, (view.w + PAD_X * 2) * fit, (view.h + PAD_Y * 2) * fit);
       }
       const r = Math.max(9, Math.min(FACE, width / 22)) / 2, beat = 0.5 + 0.5 * Math.sin(now / 1000 * Math.PI * 2 * PULSE_HZ);
       // Over the 3D view each speaker's name stands over their Ooga's head; the map carries their faces.

@@ -345,7 +345,7 @@
   // mouth wears (`copyBarred`, through `crossesSealedCave`); the doors that change scene refuse with SEALED. Only the
   // main island stands: the Mempool island, Merge Rock, the Timechain Sphere's islet and ₿IFRÖST's islet go with their
   // bridges, Heimdall, the Oogatron, the OBL cave's mirror, the signs over the sealed mouths, every cave's banners, lanterns,
-  // lamp strings and the pieces outside it (the lab's dice and chalkboard and the like, the loose ones' physics resting), ₿IFRÖST's arch, the plaza's library, the islets out at sea and the gulls and sails round the island
+  // lamp strings and the pieces outside it (the lab's dice and chalkboard and the like, the loose ones' physics resting), ₿IFRÖST's arch, the plaza's library (the hill it was cut into whole again, `libraryPlugNode`), the islets out at sea and the gulls and sails round the island
   // (`copyOffMap`, hidden
   // in `copyMask`, so they neither draw nor stand anywhere to walk on or bump into: a walker off a bridgehead falls to
   // the water and comes back by the pile), their lamps take no light (`copyOff`), and none of them runs: the Mempool
@@ -433,6 +433,7 @@
     updatePoolEffectsActivity();
     lampSelValid = false;
     copySeal(on);
+    if (libraryPlugNode) libraryPlugNode.visible = on;
     layoutClouds(on);
     solids.sync(); totemSolids.sync();
   };
@@ -1962,7 +1963,56 @@
         addTarget(pick, { kind: "book", index, priority: 2, node: pick, x: pick.position.x, y: pick.position.y, z: pick.position.z, weaponType: "none" }, { radius: 0.33 });
       }
     }
+    buildLibraryPlug();
     return node;
+  };
+  // A chat's copy has no library, and the hill it was cut into stands whole again (`libraryPlugNode`): the nook's
+  // cells filled back with rock, each the colour of the hill's own cell at that height a little way out beside the cut,
+  // so its strata and its turf run on across, and none where the hill beside stands no higher. Made once an island from
+  // the island's own queries, shown and stood on only in the copy (`copyMode`; a hidden solid stops nobody).
+  const LIBRARY_PLUGS = new WeakMap();
+  let libraryPlugNode = null;
+  const libraryPlugGeometry = () => {
+    if (LIBRARY_PLUGS.has(island)) return LIBRARY_PLUGS.get(island);
+    const [U, ox, oy, oz] = island.sightGrid, PALETTE = BL.terrain.PALETTE, cos = Math.cos(LIBRARY.ry), sin = Math.sin(LIBRARY.ry);
+    const half = LIBRARY.width / 2, out = half + 2.5 * U, reach = Math.hypot(half, LIBRARY.depth + LIBRARY.entry) + 2 * U;
+    const gx0 = Math.floor((LIBRARY.x - reach - ox) / U), gz0 = Math.floor((LIBRARY.z - reach - oz) / U);
+    const gy0 = Math.floor((LIBRARY.floor - U - oy) / U), gy1 = Math.ceil((LIBRARY.floor + LIBRARY.height + U - oy) / U);
+    const n = Math.ceil(2 * reach / U) + 2, grid = BL.terrain.makeGrid(n, gy1 - gy0 + 1, n);
+    const beside = (lx, lz, y) => island.rockMaterialAt(LIBRARY.x + cos * lx + sin * lz, y, LIBRARY.z - sin * lx + cos * lz);
+    // The cut's own dark stone (its floor, and the walls and roof a step round it) is covered too, as the hill.
+    const dark = [PALETTE[7], PALETTE[9]];
+    let cells = 0;
+    for (let i = 0; i < n; i++) for (let k = 0; k < n; k++) {
+      const x = ox + (gx0 + i + 0.5) * U, z = oz + (gz0 + k + 0.5) * U, dx = x - LIBRARY.x, dz = z - LIBRARY.z;
+      const lx = cos * dx - sin * dz, lz = sin * dx + cos * dz;
+      if (Math.abs(lx) > half + U || lz > LIBRARY.entry + U || lz < -LIBRARY.depth - U) continue;
+      const cut = Math.abs(lx) <= half && lz <= LIBRARY.entry && lz >= -LIBRARY.depth, side = lx < 0 ? -out : out;
+      for (let j = 0; j < grid.sy; j++) {
+        const y = oy + (gy0 + j + 0.5) * U;
+        if (island.solidAt(x, y, z) ? !dark.includes(island.rockMaterialAt(x, y, z)) : !cut) continue;
+        // Where the hill beside is air at that height: the rock straight behind the nook, and under the hill (behind its
+        // face) plain stone, so no cell of the cut is left open.
+        const rock = beside(side, lz, y) || beside(-side, lz, y) || (lz < 0 ? beside(lx, -LIBRARY.depth - 2.5 * U, y) || PALETTE[5] : null);
+        if (!rock) continue;
+        const index = PALETTE.indexOf(rock);
+        grid.set(i, j, k, index > 0 ? index : 5);
+        cells++;
+      }
+    }
+    const geometry = cells ? BL.terrain.gridGeometry(grid, { unit: U, palette: PALETTE, origin: { x: ox + gx0 * U, y: oy + gy0 * U, z: oz + gz0 * U } }) : null;
+    LIBRARY_PLUGS.set(island, geometry);
+    return geometry;
+  };
+  const buildLibraryPlug = () => {
+    const geometry = libraryPlugGeometry();
+    if (!geometry) return;
+    // A few millimetres proud of the hill about the nook's middle, so where it covers the cut's dark stone it is the
+    // nearer of two faces in one plane.
+    const k = 1.002, cx = LIBRARY.x, cy = LIBRARY.floor + LIBRARY.height / 2, cz = LIBRARY.z;
+    libraryPlugNode = createNode({ geometry, visible: copyOn, position: { x: cx * (1 - k), y: cy * (1 - k), z: cz * (1 - k) }, scale: { x: k, y: k, z: k } });
+    addChild(root, libraryPlugNode);
+    solids.add(libraryPlugNode);
   };
   // Palms: single palms spread evenly across the meadow, from beside the pile's ring out to the cliffs, and groves
   // of one to three on the cliff tops. Each is its own node on one of three shared geometries, so the wind bends
@@ -13142,7 +13192,7 @@
     magazineState = weather = footsteps = petReactions = mempoolIsland = timechainIsland = clankers = clankerPlay = null;
     hubScene.input = hubScene.debug = null;
     doorIsland = doorZones = null;
-    island = chalkboardDressing = chalkboardClearance = null;
+    island = chalkboardDressing = chalkboardClearance = libraryPlugNode = null;
     guideSegmentClear.boxGrid = POOL_SEAMS[0].boxGrid = POOL_SEAMS[1].boxGrid = null;
     return { targets: count };
   };

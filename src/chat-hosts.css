@@ -195,7 +195,8 @@
   background: var(--stone); color: var(--paper); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer;
 }
 .iv-reset { left: 6px; }
-.iv-full-button { right: 6px; display: grid; place-items: center; width: 32px; padding: 0; }
+/* Full screen's button keeps tight round its icon, the same 24px square at every width, in the strip and in full screen. */
+.iv-full-button { right: 6px; display: grid; place-items: center; width: 24px; height: 24px; min-height: 0; padding: 0; border-width: 0; border-radius: 5px; }
 .iv-full-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: square; }
 .iv-reset[hidden], .iv-full-button[hidden] { display: none; }
 /* Over the view they stay faint, a dark glass the view shows through, and firm up under the pointer or focus. */
@@ -205,7 +206,7 @@
 /* Go there over the island, in its lower left corner. */
 .iv-stage > .hc-go { position: absolute; left: 6px; bottom: 6px; min-height: 28px; padding: 0 10px; font-size: 11px; }
 .iv-stage > .hc-go[hidden] { display: none; }
-@media (max-width: 399px) { .iv-reset, .iv-full-button, .iv-stage > .hc-go { min-height: 44px; } .iv-full-button { width: 44px; } .iv-stage { max-height: 180px; } }
+@media (max-width: 399px) { .iv-reset, .iv-stage > .hc-go { min-height: 44px; } .iv-stage { max-height: 180px; } }
 /* Full screen (island-view.js `fullscreen`): the view in a layer over the page, its panel's empty strip folded away, and
    the page's own panel placed beside it by the page (Ooga Chat's ooga-chat.css). A screen taller than it is wide puts
    the view over the panel. */
@@ -228,12 +229,10 @@
 html.iv-full .hc-room-strip { display: none; }
 /* On a screen taller than it is wide (a phone held upright) the view runs edge to edge across the top. */
 @media (max-aspect-ratio: 1 / 1) { .iv-full-host { right: 0; bottom: auto; height: var(--iv-split, 55dvh); } }
-/* The island's chat panel on a phone, as Ooga Chat's: in a chat the island view and the roster of faces run out to the
-   panel's sides (its 14px padding taken back), square, meeting with no gap. */
-@media (max-width: 480px) {
-  .panel:not(.oc-panel)[data-space="on"] > :is(.hc-room-strip, .cloud-roster) { margin-right: -14px; margin-left: -14px; border-right-width: 0; border-left-width: 0; border-radius: 0; }
-  .panel:not(.oc-panel)[data-space="on"] > .hc-room-strip .iv-stage { border-right-width: 0; border-left-width: 0; border-radius: 0; }
-}
+/* In a chat the island view and the roster of faces run out to the panel's sides (its 14px padding taken back), square,
+   meeting with no gap, at every width: the island's panel here, Ooga Chat's in ooga-chat.css (8px on a phone). */
+.panel[data-space="on"] > :is(.hc-room-strip, .cloud-roster) { margin-right: -14px; margin-left: -14px; border-right-width: 0; border-left-width: 0; border-radius: 0; }
+.panel[data-space="on"] > .hc-room-strip .iv-stage { border-right-width: 0; border-left-width: 0; border-radius: 0; }
 /* In a chat on a narrow screen the footer is one row: the buttons, each as wide as its words (Unmute, Join Voice,
    Request to speak, End chat), then the links (Leave chat); any note a button carries goes under them. */
 @media (max-width: 479px) {

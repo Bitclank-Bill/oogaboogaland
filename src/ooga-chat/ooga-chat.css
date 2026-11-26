@@ -346,19 +346,20 @@ body {
   .oc-tab-face { padding: 6px 11px 4px; }
   .oc-slab { padding: 14px 16px; }
 }
-/* On a phone the app runs edge to edge: no page margin or side borders, the panel's own padding at 8px, its rows
-   6px apart, and in a chat the island view and the roster of faces out to the screen's sides, square, meeting with no
-   gap; the emoji bar and the footer keep the panel's 8px. */
+/* At every width the panels keep tight: their own padding at 8px, their rows 6px apart, the emoji bar and the footer
+   at the panel's 8px, and in a chat the island view and the roster of faces out to the panel's sides, square, meeting
+   with no gap. */
+.oc .oc-panel { gap: 6px; padding: 8px 8px 6px; }
+.oc .oc-panel > .panel-foot { gap: 6px 12px; }
+.oc .oc-panel > .panel-foot > .reactions { margin-top: 0; }
+.oc .oc-panel.oc-panel > :is(.hc-room-strip, .cloud-roster) { margin-right: -8px; margin-left: -8px; border-right-width: 0; border-left-width: 0; border-radius: 0; }
+.oc .oc-panel > .hc-room-strip { margin-bottom: -6px; }
+.oc .oc-panel > .hc-notice-host { margin-top: -6px; }
+.oc .oc-panel > .hc-room-strip .iv-stage { border-right-width: 0; border-left-width: 0; border-radius: 0; }
+/* On a phone the app also runs edge to edge: no page margin or side borders. */
 @media (max-width: 480px) {
   .oc { padding: calc(4px + var(--safe-top)) var(--safe-right) var(--safe-bottom) var(--safe-left); }
   .oc > .oc-frame { border-right-width: 0; border-left-width: 0; border-radius: 0; box-shadow: none; }
-  .oc .oc-panel { gap: 6px; padding: 8px 8px 6px; }
-  .oc .oc-panel > .panel-foot { gap: 6px 12px; }
-  .oc .oc-panel > .panel-foot > .reactions { margin-top: 0; }
-  .oc .oc-panel > :is(.hc-room-strip, .cloud-roster) { margin-right: -8px; margin-left: -8px; border-right-width: 0; border-left-width: 0; border-radius: 0; }
-  .oc .oc-panel > .hc-room-strip { margin-bottom: -6px; }
-  .oc .oc-panel > .hc-notice-host { margin-top: -6px; }
-  .oc .oc-panel > .hc-room-strip .iv-stage { border-right-width: 0; border-left-width: 0; border-radius: 0; }
   .oc-fixture-note { margin: 8px 8px 0; }
   .oc-device { margin: 6px 8px 0; }
 }

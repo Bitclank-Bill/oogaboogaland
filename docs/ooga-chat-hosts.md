@@ -370,8 +370,8 @@ Agreed 2026-11-23:
 - **What a copy carries:** the main island's open air as it is (scenery, the banana pile, the clouds), HQ and its
   basement down its open ramps, and the chat's members' Oogas, nothing else: no NPC crew or gorillas, every other cave
   mouth and door sealed in stone (the OBL cave's mirror, the signs over the sealed mouths, everything outside the caves
-  (banners, lanterns, lamp strings, the lab's dice and chalkboard and the like), ₿IFRÖST's arch, the plaza's library, the
-  Oogatron, the islets at sea and the gulls and sails taken down),
+  (banners, lanterns, lamp strings, the lab's dice and chalkboard and the like), ₿IFRÖST's arch, the plaza's library (the hill it was cut into standing whole
+  again: scene-hub.js `libraryPlugNode`), the Oogatron, the islets at sea and the gulls and sails taken down),
   no games, and none of the other islands or their bridges (the Mempool island, Merge Rock, the Timechain Sphere's islet,
   ₿IFRÖST's islet), so a walker off a bridgehead falls to the water and comes back beside the pile.
 - **Who goes:** speakers alone (the host, co-hosts and invited speakers) who are signed into the island with an Ooga.
@@ -479,7 +479,10 @@ As built (`src/js/island-view.js`, drawn by the shared views, chat-hosts.js, in 
   already.
 - **The map.** `scripts/island-view.mjs` (after `npm run build`) bakes it in the suite's Chrome: the built hub at midday
   on day 80 in a chat's copy mode (Main Island alone), its Oogas, gorillas, Tess and clouds left out, straight down
-  through an orthographic camera, 512 x 384. It writes `src/ooga-chat/art/island-view-main.webp` (Ooga Chat's lazy art),
+  through an orthographic camera: the inner 512 x 384 frames 96 metres across (the island about four fifths of its
+  height), and round it the picture carries 448 more pixels of the same sea each side and 128 above and below (1408 x
+  640, `pad`), so a strip of any usual shape shows the ocean itself out to its edges rather than its edges blurred. It
+  writes `src/ooga-chat/art/island-view-main.webp` (Ooga Chat's lazy art),
   the same bytes as `src/js/island-view-art.js` (the island page's copy, served as a file under `art/` on a hosted page,
   `PICTURE_MODULES`), and `src/js/island-view-data.js`, the capture camera's world-to-picture matrix (checked against the
   renderer's own projection) and the hub's light at that hour. Faces are the roster's (`rowFace`), else the native Ooga
@@ -553,9 +556,10 @@ As built (`src/js/island-view.js`, drawn by the shared views, chat-hosts.js, in 
   the split: unmarked until a pointer is over it (the resize cursor and a thin purple line along it) or it has the
   keyboard's focus, it is dragged, or moved a twentieth at a time with the arrows, to give the view more or less of the
   screen (`--iv-split`, `--iv-side`; localStorage `ooga-island-view-split`).
-- **The view's controls** (Reset view, Full screen) are translucent over the island; the fold button in the chat's
-  title is a borderless chip with a background of its own. On a phone the island's chat panel, as Ooga Chat's, runs the
-  view and the roster out to the panel's edges.
+- **The view's controls** (Reset view, Full screen) are translucent over the island, Full screen a 24px square tight
+  round its icon at every width and in full screen; the fold button in the chat's
+  title is a borderless chip with a background of its own. At every width, in both apps, the chat's panel runs the view
+  and the roster out to its edges, square and meeting with no gap.
 - `?chats=on` (Ooga Chat's fixture) and `?debug=1&chats=fixture` (the island's) mark two of Sample Oak's chat's
   speakers as walking and send their places twice a second while the view asks, and how they look as it starts: Sample
   Oak in a top hat, a shirt and glasses with the gun out, Sample Reed as a character with a pet (a lion cub, grown a
