@@ -521,7 +521,7 @@
     state.blendT = on ? Math.min(1, t) : 0;
     sendBlend();
   };
-  const sendPokerVoice = () => { if (zone === "ember-den") send(JSON.stringify({ t: "poker-voice", table: pokerVoice })); };
+  const sendPokerVoice = () => { if (zone === "emberden") send(JSON.stringify({ t: "poker-voice", table: pokerVoice })); };
   const sendMute = () => send(muted ? '{"t":"mute","on":true}' : '{"t":"mute","on":false}');
   const sendCall = () => { if (state.chats) send(call ? '{"t":"call","on":true}' : '{"t":"call","on":false}'); };
   // What the room hears is "showing the island now": the hub scene, in a visible tab.
@@ -1015,6 +1015,15 @@
       else if (msg.all === "unlinked") BL.hud.toast("Unlinked everyone");
       else if (msg.all === "none") BL.hud.toast("Nobody here has asked to link with you");
       rosterChanged();
+    } else if (msg.t === "renamed") {
+      // An account's new display name (worker/src/renames.js), from the island or Ooga Chat: its record here and, when it
+      // is this page's own, the account take it at once, with no rejoin.
+      const display = msg.display;
+      if (typeof display !== "string" || !display.trim() || display.length > 50 || /[\u0000-\u001f\u007f]/.test(display)) return;
+      const rec = remotes.get(msg.id);
+      if (rec && rec.display !== display) { rec.display = display; rosterChanged(); }
+      // In place: the page's own rename (`setDisplay`) checks it is still the same account object as its answer comes.
+      if (state.me && state.me.id === msg.id && state.me.display !== display) { state.me.display = display; emit(); }
     } else if (msg.t === "react") {
       if (remotes.has(msg.id) && BL.reactionPolicy.valid(msg.e)) for (const fn of reactSubscribers) fn(msg.id, msg.e);
     } else if (msg.t === "hand") {
@@ -1328,7 +1337,7 @@
   };
   // Voice changes without moving or hiding anybody on the shared floor.
   const setPokerVoice = table => {
-    if (zone !== "ember-den" || table !== null && (!Number.isInteger(table) || table < 0 || table >= 10) || pokerVoice === table) return;
+    if (zone !== "emberden" || table !== null && (!Number.isInteger(table) || table < 0 || table >= 10) || pokerVoice === table) return;
     pokerVoice = state.pokerVoice = table;
     keepLinkedVoices();
     sendPokerVoice();

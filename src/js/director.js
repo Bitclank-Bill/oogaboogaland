@@ -11,11 +11,12 @@
   const TEST_DONATIONS = params.get("testdonations") === "1" && ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
   // A game still being built sets `wip: true` on its scene and stays unregistered, so nothing can enter it
   // and its cave seals, unless the page opts in: ?wip=<scene id> opens that game and lands in it, wip=1 opens
-  // every one. No debug needed, so anyone can play a shared link. Its saves are left alone for the day it opens.
+  // every one. No debug needed, so anyone can play a shared link. Its saves are left alone for the day it opens. A scene
+  // that is part of another (`wipOf`) opens with it.
   const WIP = params.get("wip");
   // Rally stays closed to visitors; its retained suite explicitly opts into the maintenance scene.
   const RALLY_TEST = DEBUG && WIP === "race";
-  for (const id of Object.keys(scenes)) if (scenes[id].wip && WIP !== "1" && WIP !== id) delete scenes[id];
+  for (const id of Object.keys(scenes)) if (scenes[id].wip && WIP !== "1" && WIP !== id && WIP !== scenes[id].wipOf) delete scenes[id];
   for (const slot of window.BL.caves.slots) if (slot.scene && !scenes[slot.scene]) Object.assign(slot, { scene: null, status: "dark" });
   const requestedBananas = Number(params.get("bananas"));
   const START_BANANAS = DEBUG && params.has("bananas") && Number.isFinite(requestedBananas) && requestedBananas >= 0
@@ -95,16 +96,20 @@
   // The button's press opens each sound's level (sound-panel.js); M mutes.
   const soundPanel = window.BL.soundPanel.create({ button: soundButton });
   showSound();
-  // Reserve M before scene capture listeners and transition holds; editable fields keep it for typing.
+  // Reserve M before scene capture listeners and transition holds; editable fields keep it for typing. In a hosted chat
+  // (chat-call.js) the island's voice is stopped and the chat's own controller holds the microphone, so M is a speaker's
+  // there, as the chat footer's Unmute is.
   const onVoiceMuteKey = (e) => {
-    const voice = window.BL.voice;
-    if (e.key.toLowerCase() !== "m" || e.metaKey || e.ctrlKey || e.altKey || !voice.stats.enabled && !voice.stats.joining && !voice.stats.returning) return;
+    const voice = window.BL.voice, call = window.BL.chatCall;
+    const chatMic = !!(call && call.room && call.state.voice.role === "speaker");
+    if (e.key.toLowerCase() !== "m" || e.metaKey || e.ctrlKey || e.altKey || !chatMic && !voice.stats.enabled && !voice.stats.joining && !voice.stats.returning) return;
     if (e.target && (e.target.isContentEditable || e.target.closest && e.target.closest("input, textarea, select"))) return;
     e.preventDefault();
     e.stopImmediatePropagation();
     if (e.repeat) return;
+    if (chatMic) call.media.mute();
     // Back from an earlier session the microphone is still closed, so M opens it as Unmute does.
-    if (voice.stats.returning) voice.toggle();
+    else if (voice.stats.returning) voice.toggle();
     else voice.setMuted(!voice.stats.muted);
   };
   window.addEventListener("keydown", onVoiceMuteKey, true);
@@ -312,7 +317,10 @@
   };
   const router = routerMod.create(scenes, window.BL.routes, go);
   // Any chunk found gone, a prefetch's or a picture's included, means every later one is too.
-  window.BL.deferred.onStale(() => window.BL.hud.offerReload());
+  window.BL.deferred.onStale(() => window.BL.hud.offerUpdate());
+  // A newer version may be live once the tab is shown again, the network is back or the room's socket returns (every
+  // deploy drops it): the page asks then (deferred.js `check`), never on a timer.
+  const checkVersion = () => { if (!document.hidden) window.BL.deferred.check(); };
   window.BL.donationPopup.onClose(() => router.dismissPlace("hub", "donate"));
   // The logo is the site's home link: from any scene it goes back to the island, as a website's logo goes home.
   document.querySelector(".home-link").addEventListener("click", (e) => {
@@ -337,6 +345,13 @@
     const text = window.BL.zoneMap.line(zone), home = zoneLines.get(zoneLine);
     if (text === home.textContent) zoneLine.replaceChildren(...home.cloneNode(true).childNodes);
     else zoneLine.textContent = text;
+  };
+  // The address follows the zone the visitor stands in (router.js `follow`), never during a trip, when the history entry
+  // may already be the next scene's. The scene hears its new place (`routed`), so what it remembers of where the visitor
+  // stands (visit-spot.js) is kept under the address a reload will open.
+  const followZone = () => {
+    const entry = router.follow(active.id, window.BL.net.state.zone);
+    if (entry && active.routed) active.routed(entry.place);
   };
   // The title cards of the games that have no phase of their own for one: shown on every arrival,
   // closed by their button, Enter, Space or Escape, and nothing else reaches the scene while one shows.
@@ -538,7 +553,7 @@
   const landing = (t) => t.redirect ? { next: scenes[t.redirect.scene], place: t.redirect.place ?? null } : { next: t.next, place: t.place };
   // A chunk a deploy removed can never load: the HUD's reload offer replaces "try again" (see deferred.js).
   const abandon = () => {
-    if (window.BL.deferred.stale) window.BL.hud.offerReload();
+    if (window.BL.deferred.stale) window.BL.hud.offerUpdate();
     else window.BL.hud.toast("That place could not be opened · try again");
     router.abandon();
   };
@@ -711,6 +726,7 @@
     }
     if (active.id !== "studio") BL.equipment.applyLocal(active.debug?.pilot?.player || active.debug?.crew?.player);
     showZoneLine();
+    if (!transition) followZone();
     cabinetView.update(dt, active, !!openIntro() || !!active.cabinetMenu, !!transition);
     if (POSITION_DEBUG && active.id !== "hub" && elapsed >= positionDebugNext) {
       positionDebugNext = elapsed + 0.1;
@@ -718,6 +734,8 @@
     }
     if (!helpHeld) agentPlay.update(sceneDt);
     updateWorldClock(now);
+    // The view is final now: judge the driven heads from it, whatever moved it after the pilot did (pilot.js `settle`).
+    BL.pilot.settle(active.camera);
     const drawn = renderer.render(active.root, active.camera, active.renderOpts, activeMeshRigs);
     if (drawn && !firstPlayable && !curtain.isConnected && !inputHeld && !transition) {
       firstPlayable = true;
@@ -852,6 +870,7 @@
     // A hidden tab holds no sockets; the chain's REST polls already skip themselves while hidden.
     mempool.setHidden(document.hidden);
     chain.setHidden(document.hidden);
+    checkVersion();
     if (document.hidden) {
       window.cancelAnimationFrame(raf);
       raf = 0;
@@ -866,6 +885,7 @@
   window.addEventListener("keyup", clearRightShift);
   window.addEventListener("blur", clearRightShift);
   document.addEventListener("visibilitychange", onVisibility);
+  window.addEventListener("online", checkVersion);
   if (params.has("nosim")) donations.config.simulate = false;
   // The live feeds stay off under nosim (the suite) and mempool=0 / oogatron=0 / chain=0;
   // checks drive the hub's weather through emit and apply, and the jumbotron through refreshData.
@@ -908,6 +928,13 @@
     scopeMe = me;
     window.BL.outdoorScope.reset();
   });
+  let roomLive = false, roomBack = false;
+  const unsubscribeVersion = net.subscribe((state) => {
+    const live = state.room === "live";
+    if (live && !roomLive && roomBack) checkVersion();
+    roomBack ||= live;
+    roomLive = live;
+  });
   // Ooga Chat's outdoor voice bridge (outdoor-voice.js): the scope's transport, after the reset above so a reconnect's
   // new epoch is the one it asks for. Without the room's feature it keeps the page out of every public audience.
   const outdoorBridge = window.BL.outdoorVoice.attach();
@@ -917,6 +944,7 @@
   // The roster's host dot and voice marks follow the room and voice, on whichever scene's roster is up.
   const unsubscribeRosterMarks = net.subscribeRoster(window.BL.hud.showVoices);
   const unsubscribeVoiceMarks = window.BL.voice.subscribe(window.BL.hud.showVoices);
+  const unsubscribeVoiceLevels = window.BL.voice.subscribeLevels(window.BL.hud.showLevels);
   const unsubscribeMic = window.BL.voice.subscribe(showMic);
   const accountReady = !params.has("nosim") && params.get("net") !== "0" ? net.start() : Promise.resolve();
   // A tab opened in the background waits for its first look before it holds any socket.
@@ -1012,10 +1040,11 @@
   // EntropyLab currently lives in its island cave; retain the isolated scene for debug checks only.
   // The character studio also opens directly for same-origin wardrobe saves.
   // The bare address goes back to the place the visitor last stood in this browser (visit-spot.js), as its own route
-  // would: a Timechain room by its number, any other scene as a whole. The island stands its Ooga at its own spot.
+  // would: a Timechain room by its number, a DSB Land venue or a place on the island (its zone's route) by its name, any
+  // other scene as a whole. The island's own bare address stands its Ooga at its own spot.
   const resumeRoute = () => {
     const was = DEBUG || params.has("scene") || WIP ? null : window.BL.visitSpot.resume();
-    if (!was || was.scene === "hub" || !Object.hasOwn(scenes, was.scene)) return null;
+    if (!was || was.scene === "hub" && !was.place || !Object.hasOwn(scenes, was.scene)) return null;
     const list = window.BL.routes.list;
     return list.find((e) => e.scene === was.scene && (e.place || "") === was.place) || list.find((e) => e.scene === was.scene && !e.place) || { scene: was.scene, place: null };
   };
@@ -1221,11 +1250,13 @@
     window.BL.oogatronLive.dispose();
     unsubscribeAccount();
     unsubscribeScope();
+    unsubscribeVersion();
     outdoorBridge.dispose();
     voiceHandoff.dispose();
     unsubscribeVoice();
     unsubscribeRosterMarks();
     unsubscribeVoiceMarks();
+    unsubscribeVoiceLevels();
     unsubscribeMic();
     window.BL.voice.dispose();
     window.BL.highscores.dispose();
@@ -1241,6 +1272,7 @@
     document.removeEventListener("sheetchange", holdSheets);
     document.removeEventListener("pointerdown", focusWorld, true);
     document.removeEventListener("visibilitychange", onVisibility);
+    window.removeEventListener("online", checkVersion);
     positionDebug.removeEventListener("click", copyPositionDebug);
     try {
       if (active) active.leave(true);

@@ -18,7 +18,7 @@ the way.
 |---|---|---|
 | `src/js/island-layout.js` | page and Worker, baked | The hub's routine tables: the meadow's paths, fire seats, stroll spots, each work cave's fan of places that every Ooga may shoot from, and the sealed caves' fronts. `scripts/island-layout.mjs` bakes it from the real hub in the suite's Chrome, because those tables depend on props and geometry only the page builds. The hub's "island layout" check fails when the hub and the file disagree. |
 | `src/js/island-sim.js` | page and Worker | The passive routine (below) over those tables, with no terrain, props or collision. It runs fixed 50 ms steps, is seeded and allocates nothing per step. Its output is one `game-wire.js` row per Ooga. |
-| `worker/src/games/island.js` | Worker | Kind `island`, venue `main`, on `game-host.js`. It takes the cast from `characters.gen.json`, and states and caves from Oogatron's stats through the `OOGATRON` binding, read every minute while it runs, as a page polls them. Until the first reading it starts from the snapshot every deploy bakes into the page (`jumbotron-data.js`), as a page does, so a world that cannot reach Oogatron shows what a page would. The snapshot stays the page script the bot rebakes; the Worker lends it a `window` for its evaluation alone (`lend-window.js`, `return-window.js`). It sends motion at 10 Hz, skips frames while nothing moves (at most 2 s apart), and sends the cast's names as its state. It runs only while a page follows it, and keeps no record: a restart starts the routine afresh. |
+| `worker/src/games/island.js` | Worker | Kind `island`, venue `main`, on `game-host.js`. It takes the cast from `characters.gen.json`, and states and caves from Oogatron's stats through the `OOGATRON` binding, read every minute while it runs, as a page polls them. Until the first reading it starts from the snapshot every deploy bakes into the page (`jumbotron-data.js`), as a page does, so a world that cannot reach Oogatron shows what a page would. The snapshot stays the page script the bot rebakes; the Worker lends it a `window` for its evaluation alone (`lend-window.js`, `return-window.js`). It sends motion at 10 Hz, each tick asked for 2 ms after its world finishes its second step since the last (`nextTickIn`), so every frame goes out just after the moment it stands for and frames stand 100 ms apart however late the object's timer fires; it skips frames while nothing moves (at most 2 s apart), and sends the cast's names as its state. It runs only while a page follows it, and keeps no record: a restart starts the routine afresh. |
 | `src/js/island-world.js` | page | Follows the world on the island, on every visit unless `?islandworld=0` (next section). |
 
 ### The routine
@@ -72,8 +72,13 @@ three. A frame for 60 Oogas is about 750 bytes.
   chiller on a seat or spot stays on it. One the crew has not placed within 2 s goes regardless. Its rows are ignored
   until then, so it is never hidden as away meanwhile.
 
-Either way the rows go into one `game-timeline.js` and are drawn 150 ms behind the newest (two steps behind for the
-local world), eased between frames, as the ghost hunt draws.
+Either way the rows go into one `game-timeline.js`, eased between frames, as the ghost hunt draws. The local world is
+drawn two steps behind its clock. The server's frames are kept by the world time their rows stand for (`gameMs`),
+never by the tick that sent them, which runs up to a step ahead of the world and comes late as the object's timer
+pleases. The page draws them on a play clock of its own, kept as far behind the newest frame it could have by now as
+the gaps between frames and the spread of their arrivals need (at least 180 ms, at most 600 ms; rising at once,
+easing back slowly), and eased toward that at most 8% faster or slower than real time, jumping only when a second or
+more out (a hidden tab, a restarted world).
 
 Each Ooga is then handled according to its row:
 

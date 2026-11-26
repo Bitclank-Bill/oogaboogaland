@@ -21,12 +21,13 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync,
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
-import { externalizeAudio } from "./distribution-audio.mjs";
+import { externalizeAudio, externalizeLoungeTrack } from "./distribution-audio.mjs";
 import { stageIcons } from "./distribution-icons.mjs";
 import { MAP_ENTRY, stageMap } from "./distribution-map.mjs";
 import { PICTURE_MODULES, externalizeModules, externalizePage, externalizePictures } from "./distribution-modules.mjs";
 import { writeTerrainWorker } from "./distribution-terrain.mjs";
 import { writeMicFilter } from "./distribution-mic.mjs";
+import { writeKeepGeometry } from "./distribution-keep.mjs";
 import { catalogPageAttributes } from "./character-catalog-build.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -69,10 +70,11 @@ const pictures = process.argv.includes("--image-assets");
 // A picture module outside every data-defer group stays in the page's own script and is rewritten there.
 const inlinePictures = pictures ? PICTURE_MODULES.filter((src) => ![...deferred.values()].some((sources) => sources.includes(src))) : [];
 const hostedModule = (src, text) => {
+  if (process.argv.includes("--audio-assets") && src.startsWith("js/lounge-track-")) return externalizeLoungeTrack(src, text, out);
   if (src === portableLounge) return "";
   return pictures && PICTURE_MODULES.includes(src) ? externalizePictures(src, text, out) : text;
 };
-shell = externalizeModules(shell, out, deferred, block, writeTerrainWorker(root, out), hostedModule, [...inlinePictures, portableLounge], writeMicFilter(root, out));
+shell = externalizeModules(shell, out, deferred, block, writeTerrainWorker(root, out), hostedModule, [...inlinePictures, portableLounge], writeMicFilter(root, out), writeKeepGeometry(root, out));
 if (process.argv.includes("--page-assets")) shell = externalizePage(shell, out, block, ["js/jumbotron-data.js"]);
 if (shell.split("</title>").length !== 2 || shell.split("</head>").length !== 2) throw new Error("oogaboogaland.html: expected one <title> and one </head>");
 

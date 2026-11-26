@@ -35,7 +35,7 @@
     box.hidden = false;
   };
   // The voice seam until the controller is made (and if it can't be): a muted listener that captures nothing.
-  let media = { available: false, why: "", state: BL.oogaChatMedia.IDLE, heard() {}, status() {}, release() {}, join() {}, leave() {}, mute() {}, muteLocal() {}, mutedLocally: () => false, setVolume() {}, volumeOf: () => 1, VOLUME_MAX: 1, duel() {}, setMuteDuels() {}, mutedByDuel: () => false, identify() {}, zone() {}, stop() {}, retry() {}, remember() {}, dispose() {} };
+  let media = { available: false, why: "", state: BL.oogaChatMedia.IDLE, heard() {}, status() {}, release() {}, join() {}, leave() {}, mute() {}, level: () => 0, ownLevel: () => 0, subscribeLevels: () => () => {}, muteLocal() {}, mutedLocally: () => false, setVolume() {}, volumeOf: () => 1, VOLUME_MAX: 1, duel() {}, setMuteDuels() {}, mutedByDuel: () => false, identify() {}, zone() {}, stop() {}, retry() {}, remember() {}, dispose() {} };
   // `relisten` is the feed's 4401 restart timer; pagehide clears it, so it lives out here with what pagehide disposes.
   // `donating` ends the donation socket, opened once the service says its feed is live; `feeding` is Feed the Oogas,
   // the island's own donation popup, made the first time it opens; `member` is the Commons socket.
@@ -46,6 +46,15 @@
     const back = parseReturn(location.search);
     if (back) history.replaceState(history.state, "", `${location.pathname}${withoutReturn(location.search)}${location.hash}`);
     const query = new URLSearchParams(location.search);
+    // A shared chat's address (`?chat=<id>`, chat-hosts.js Share) leaves the address at once and is kept in this tab
+    // through a sign-in; the hosts chunk opens that chat's preview once it is up (ooga-chat-hosts.js `OPEN_KEY`).
+    const shared = query.get("chat");
+    if (shared !== null) {
+      if (/^[\w-]{16}$/.test(shared)) try { sessionStorage.setItem("ooga-chat-open", JSON.stringify({ id: shared, at: Date.now() })); } catch { /* not kept */ }
+      const rest = new URLSearchParams(location.search);
+      rest.delete("chat");
+      history.replaceState(history.state, "", `${location.pathname}${rest.size ? `?${rest}` : ""}${location.hash}`);
+    }
     adapter = fixture ? BL.oogaChatFixtures.create({ state: query.get("state") || undefined, roster: query.get("roster") || undefined, voice: query.get("voice") || undefined })
       : BL.oogaChatHttp.create();
     // Voice (ooga-chat-media.js): it calls the adapter's media broker under the feed's own connection, asks the feed for a
@@ -154,8 +163,20 @@
     const handoff = BL.voiceHandoff.build({ onSwitch: () => { if (media.available && mayJoin()) media.join({ takeover: true }); } });
     document.body.append(handoff.node);
     page.signal.addEventListener("abort", () => handoff.node.remove());
+    // A saved name not yet on the visitor's own tile (`renamed`): the audience socket opened again as soon as their voice
+    // is idle, so the server's next assertion carries it.
+    let renamed = false;
+    const RENAME_AGAIN_MS = 1500;
+    const renameTile = () => {
+      if (!renamed || !listening || state.voice.role === "speaker" || state.voice.busy) return;
+      renamed = false;
+      const kept = listening;
+      listening = null;
+      listen(kept);
+    };
     const set = (patch) => {
       state = { ...state, ...patch, voice: media.state };
+      if (renamed) queueMicrotask(renameTile);
       shell.update(state);
       bar.update(state);
       syncLink();
@@ -362,13 +383,29 @@
       feeding.open(mode === "demo");
     };
     BL.oogaChatPortraits?.configure(() => adapter.contributors());
+    // Renamed elsewhere (on the island, or in another of this account's tabs or devices: the Room's `renamed`, through
+    // the Commons): the account controller takes the name at once and has the server ask the island for it, so this
+    // account's chosen name here follows the island's (ooga-chat-auth.js `renamed`). Never written back: the island's own
+    // save is the only one.
+    town.subscribe((kind) => {
+      if (kind === "renamed" && town.state.you) auth.renamed(town.state.you.display);
+    });
     const ctx = { actions, media, install: () => device.install(), reload: () => device.reload(), storageKey: (name) => storageKey(adapter.kind, name),
       demo: fixture ? adapter.demo : null, feed: feedOogas, commons: { model: town, send: (data) => !!member && member.send(data),
         // The name field: saved as the island's display name, then the Commons is joined again so the Room's welcome,
-        // and every line after it, carries the new name (as an island page joins again after its own rename).
+        // and every line after it, carries the new name (as an island page joins again after its own rename). The
+        // account is read again so the footer shows it at once, and the audience socket, whose assertion names the
+        // visitor's own tile, is opened again (`renameTile`), at once for a listener and, for a speaker, once their voice
+        // is idle, so it never interrupts their speaking: until then a speaker's tile keeps the old name.
         rename: async (display) => {
           const result = await adapter.commonsName(display);
-          if (result.ok) { membership = null; joinCommons(); }
+          if (result.ok) {
+            membership = null; joinCommons();
+            // A check already under way may answer with the old name: asked again once it has.
+            if (state.auth === "checking") setTimeout(() => auth.check("rename"), RENAME_AGAIN_MS); else auth.check("rename");
+            renamed = true;
+            renameTile();
+          }
           return result;
         } },
       contributors: () => adapter.contributors(),
