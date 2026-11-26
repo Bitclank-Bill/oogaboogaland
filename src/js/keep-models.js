@@ -2727,7 +2727,8 @@
     crates: [["crate", -0.45, 0, -0.2, 0], ["crate", 0.5, 0, 0.35, 1], ["crate", -0.35, "top", -0.15, 2]],
     casks: [["barrel", -0.45, 0, 0.1, 0], ["barrel", 0.45, 0, -0.2, 1], ["barrel", 0.05, 0, 0.7, 2]],
     barrel: [["barrel", 0, 0, 0, 0]],
-    barrels: [["barrel", -0.95, 0, 0, 0], ["barrel", 0, 0, 0, 1], ["barrel", 0.95, 0, 0, 2]]
+    barrels: [["barrel", -0.95, 0, 0, 0], ["barrel", 0, 0, 0, 1], ["barrel", 0.95, 0, 0, 2]],
+    keg: [["barrel", 0, 0, 0, 3]]
   };
   const kits = new Map();
   const kit = (kind) => {

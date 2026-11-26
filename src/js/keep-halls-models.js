@@ -720,7 +720,7 @@
     arrowBarrel: () => { const rand = mulberry32(41), parts = [lathe({ profile: [[0, 0], [0.3, 0], [0.36, 0.42], [0.3, 0.85], [0.26, 0.85], [0.26, 0.2], [0, 0.2]], segments: 12, color: "#3e2a1a" }), ...[0.12, 0.42, 0.74].map((y) => moved(torus(0.33, 0.02, IRON, 0, 12, 4), 0, y, 0))];
       for (let i = 0; i < 12; i++) { const a = rand() * TAU, r = rand() * 0.18, lean = 0.1 + rand() * 0.12; parts.push(beam(Math.cos(a) * r, 0.3, Math.sin(a) * r, Math.cos(a) * (r + lean), 1.25 + rand() * 0.12, Math.sin(a) * (r + lean), 0.012, "#b89a6a"), B(0.07, 0.12, 0.012, i % 2 ? "#d9661c" : "#e6dfd3", Math.cos(a) * (r + lean), 1.26, Math.sin(a) * (r + lean))); }
       return merge(...parts); },
-    keg: () => merge(lathe({ profile: [[0, 0], [0.3, 0], [0.36, 0.45], [0.3, 0.9], [0, 0.9]], segments: 12, color: "#3e2a1a" }), ...[0.12, 0.45, 0.78].map((y) => moved(torus(0.33, 0.02, IRON, 0, 12, 4), 0, y, 0)), B(0.12, 0.12, 0.02, "#8a1a1a", 0, 0.5, 0.36))
+    keg: () => BL.keepModels.kit("keg").geometry
   });
   // A candle that floats over the lounge, a part about its foot.
   const floatCandle = cached(() => noShadow(merge(B(0.07, 0.34, 0.07, WHITE, 0, 0.17, 0), B(0.08, 0.05, 0.08, "#f4efe0", 0.01, 0.3, 0.01), B(0.04, 0.09, 0.04, "#ffd27a", 0, 0.39, 0, 1))));
