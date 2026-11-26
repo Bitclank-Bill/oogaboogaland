@@ -252,6 +252,10 @@
       if (kind === "history") by("log").scrollTop = by("log").scrollHeight;
     };
     const leaveDialog = el.querySelector(".poker-leave"), leaveDetail = el.querySelector("#poker-leave-detail");
+    if (hud) {
+      hud.dismissOutside(sheet, closeSheet);
+      hud.dismissOutside(leaveDialog, () => leaveDialog.close());
+    }
     let leaveHand = -1;
     const requestWalk = () => {
       closeEmoteMenu();

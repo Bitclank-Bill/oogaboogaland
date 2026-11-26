@@ -37926,10 +37926,14 @@ const pokerEraHudStep = { name: "poker seated era HUDs", why: "playthrough: insp
     sheet.querySelector('[data-poker-size="half"]').click();
     const amount=Number(sheet.querySelector('[data-poker="amount"]').value);
     sheet.querySelector('[data-poker="close-sheet"]').click(); const cancelled=!sheet.open && t.version===version;
+    open.click();
+    const sizing = sheet.querySelector(".poker-sizing"), rect = sheet.getBoundingClientRect();
+    sheet.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true,clientX:rect.left-1,clientY:rect.top-1}));
+    const restored = !sheet.open && !sheet.contains(sizing) && el.contains(sizing) && t.version === version;
     open.click();sheet.querySelector('[data-poker="raise"]').click();
-    return {cancelled,paid:t.snapshot("local-player").seats.find(p=>p?.id==="local-player").roundBet,amount,closed:!sheet.open};
+    return {cancelled,restored,paid:t.snapshot("local-player").seats.find(p=>p?.id==="local-player").roundBet,amount,closed:!sheet.open};
   })()`);
-  record("poker HUD: a mobile half-pot wager can be cancelled, then submitted for exactly the displayed amount",bet.cancelled && bet.closed && bet.amount>0 && bet.paid===bet.amount,JSON.stringify(bet));
+  record("poker HUD: a mobile half-pot wager can be cancelled, then submitted for exactly the displayed amount",bet.cancelled && bet.restored && bet.closed && bet.amount>0 && bet.paid===bet.amount,JSON.stringify(bet));
   await b.send("Emulation.setTouchEmulationEnabled",{enabled:false});
   await b.send("Emulation.setDeviceMetricsOverride",{width:1440,height:900,deviceScaleFactor:1,mobile:false});
   const opener = await b.evaluate(`(() => {
@@ -37947,6 +37951,20 @@ const pokerEraHudStep = { name: "poker seated era HUDs", why: "playthrough: insp
   await b.send("Input.dispatchKeyEvent",{type:"keyUp",key:"Escape",code:"Escape",windowsVirtualKeyCode:27});
   const returned = await b.evaluate('!document.querySelector(".poker-sheet").open && !document.querySelector(".poker-leave").open && document.activeElement.dataset.poker==="tools"');
   record("poker HUD: desktop tools show one panel at a time and Escape returns focus to the hand",tools && returned,JSON.stringify({tools,returned}));
+  await b.click(...opener);
+  await b.click(1,1);
+  const toolsClosed = await b.evaluate('!document.querySelector(".poker-sheet").open');
+  const leaving = await b.evaluate(`(() => {
+    document.querySelector('[data-poker-action="walk"]').click();
+    return document.querySelector(".poker-leave").open;
+  })()`);
+  await b.click(1,1);
+  const stayed = await b.evaluate(`(() => {
+    const p = BL.scenes.poker.debug.poker;
+    return !document.querySelector(".poker-leave").open && document.body.hasAttribute("data-poker-table-view")
+      && p.session.tables[p.selected].snapshot().seats.some(seat => seat?.id === "local-player");
+  })()`);
+  record("poker HUD: pressing the backdrop dismisses table tools and cancels departure while keeping the seat",toolsClosed && leaving && stayed,JSON.stringify({toolsClosed,leaving,stayed}));
 } };
 scene("poker", { opts: PHONE_SIZE, steps: [pokerEraHudStep] });
 scene("poker", { opts: PHONE_SIZE, steps: [phone("poker", { card: '[data-intro="poker"]', required: ["#joy-move", "#joy-look", "#poker .panel-edge"] }), { name: "poker phone actions", why: "rule: seated touch players can read private cards and access legal actions without horizontal overflow", run: async b => {
