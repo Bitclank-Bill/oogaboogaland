@@ -51,8 +51,8 @@
     const seededAt = new Float64Array(n).fill(Infinity);
     const stats = { mode: "", frames: 0, followed: 0, refused: "", delay: 0, behind: 0 };
     const leads = new Float64Array(HEARD), gaps = new Float64Array(HEARD);
-    let heardCount = 0, heardHead = -1, lastGame = NaN, play = NaN, delay = DELAY_MIN_MS;
-    const resetClock = () => { heardCount = 0; heardHead = -1; lastGame = NaN; play = NaN; delay = DELAY_MIN_MS; };
+    let heardCount = 0, heardHead = -1, lastGame = NaN, play = NaN, delay = DELAY_MIN_MS, ranAt = NaN;
+    const resetClock = () => { heardCount = 0; heardHead = -1; lastGame = NaN; play = NaN; delay = DELAY_MIN_MS; ranAt = NaN; };
 
     // A frame's rows into the timeline at `t` (ms), in the slots the cast puts them.
     const take = (f, t) => {
@@ -115,7 +115,11 @@
     };
     // The world time to draw this frame. The newest frame there could be by now is the soonest one's lead on: the next
     // comes a gap after it and as much later as the leads spread, so the delay covers the widest gap and that spread.
-    const serverClock = (dt) => {
+    // The clock moves by the real time since it last ran, never the scene's `dt`, which the director caps at 0.1 s: under
+    // 10 fps the Oogas would walk slow and then jump.
+    const serverClock = () => {
+      const now = performance.now(), step = ranAt === ranAt ? now - ranAt : 0;
+      ranAt = now;
       let lead = -Infinity, low = Infinity, gap = 0;
       for (let k = 0; k < heardCount; k++) {
         const v = leads[k];
@@ -124,8 +128,8 @@
         if (gaps[k] > gap) gap = gaps[k];
       }
       const need = Math.min(DELAY_MAX_MS, Math.max(DELAY_MIN_MS, gap + lead - low + MARGIN_MS));
-      delay = need > delay ? need : Math.max(need, delay - EASE_MS_S * dt);
-      const target = performance.now() + lead - delay, step = dt * 1000;
+      delay = need > delay ? need : Math.max(need, delay - EASE_MS_S * step / 1000);
+      const target = now + lead - delay;
       if (!(Math.abs(target - play) < SNAP_MS)) play = target;
       else {
         play += step;
@@ -191,7 +195,7 @@
       }
       // The local world steps 20 times a second; drawn by `t` alone, every Ooga would stand still for frames and then jump.
       // The server's play clock runs on while the timeline is refilled, so it never comes back to a stale one.
-      const at = sim ? sim.clock * 1000 - LOCAL_DELAY_MS : heardCount ? serverClock(dt) : NaN;
+      const at = sim ? sim.clock * 1000 - LOCAL_DELAY_MS : heardCount ? serverClock() : NaN;
       if (!live || at !== at) return;
       if (Number.isNaN(timeline.sample(at, shown))) return;
       let followed = 0;

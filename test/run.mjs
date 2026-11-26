@@ -51229,46 +51229,53 @@ const islandWorldProof = async () => {
   }
   // Regression: signed in, the server's frames were drawn by the tick's wall clock, up to a step ahead of the world they
   // carried, 150 ms behind with frames 100 ms or more apart: walkers sped up and slowed down every frame, and stood
-  // still whenever a frame came 50 ms late. Here the object's ticks run late and the frames arrive unevenly.
+  // still whenever a frame came 50 ms late. Here the object's ticks run late and the frames arrive unevenly. And at under
+  // 10 fps, whose `dt` the director caps at 0.1 s, the play clock must still keep pace with the frames coming in.
   let handlers = null, seed = 9;
   const rand = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32);
   BLx.gameNet = { offers: () => true, open: (kind, venue, h) => { handlers = h; return { state: "live", serverNow: () => now - 30, close() {} }; } };
-  const followers = cast.slice(0, 6).map((c) => ({ traits: { name: c.name }, contributor: c.name, state: "working", bedTravel: { mode: null },
-    root: { visible: true, position: { x: 0, y: 0, z: 0 }, rotation: { y: 0 } } }));
-  const serverWorld = BLx.islandWorld.create({
-    crew: { list: followers, workSites: L.sites, siteActive: () => true, refreshStates() {}, refreshRosterRow() {} },
-    contributors: { stateFor: () => "working" }, net: { state: { me: { id: 1 } }, subscribe: () => () => {} }
-  });
-  const server = S.create({ seed: 7 });
-  server.setCast(cast.slice(0, 6));
-  cast.slice(0, 6).forEach((c) => server.setActivity(c.name, "working", 0b0101));
-  handlers.state({ s: { cast: cast.slice(0, 6).map((c) => c.name) } });
-  const inFlight = [], prior = followers.map(() => null);
-  let ranAt = now, tickAt = now + 100, steady = 0, lurches = 0, frozen = 0;
-  for (let frame = 0; frame < 60 * 60; frame++) {
-    now += 1000 / 60;
-    while (now >= tickAt) {
-      server.step((tickAt - ranAt) / 1000); ranAt = tickAt;
-      const f = BLx.gameWire.frame();
-      server.motion(f, tickAt);
-      inFlight.push({ due: tickAt + 30 + rand() * 40, f });
-      tickAt += 100 + rand() * 30;
-    }
-    inFlight.sort((x, y) => x.due - y.due);
-    while (inFlight.length && inFlight[0].due <= now) handlers.motion(inFlight.shift().f);
-    serverWorld.update(1 / 60);
-    followers.forEach((cave, i) => {
-      const f = cave.follow, was = prior[i], d = f && was ? Math.hypot(f.x - was.x, f.z - was.z) : 0;
-      if (f && was && f.act === ACT.WALK && was.act === ACT.WALK && was.d > 0 && frame > 300) {
-        steady++;
-        if (d === 0) frozen++;
-        else if (Math.abs(d - was.d) > 0.25 * was.d) lurches++;
-      }
-      prior[i] = f ? { x: f.x, z: f.z, act: f.act, d } : null;
+  const follow = (frameMs, frames) => {
+    const followers = cast.slice(0, 6).map((c) => ({ traits: { name: c.name }, contributor: c.name, state: "working", bedTravel: { mode: null },
+      root: { visible: true, position: { x: 0, y: 0, z: 0 }, rotation: { y: 0 } } }));
+    const serverWorld = BLx.islandWorld.create({
+      crew: { list: followers, workSites: L.sites, siteActive: () => true, refreshStates() {}, refreshRosterRow() {} },
+      contributors: { stateFor: () => "working" }, net: { state: { me: { id: 1 } }, subscribe: () => () => {} }
     });
-  }
+    const server = S.create({ seed: 7 });
+    server.setCast(cast.slice(0, 6));
+    cast.slice(0, 6).forEach((c) => server.setActivity(c.name, "working", 0b0101));
+    handlers.state({ s: { cast: cast.slice(0, 6).map((c) => c.name) } });
+    const inFlight = [], prior = followers.map(() => null), began = now;
+    let ranAt = now, tickAt = now + 100, steady = 0, lurches = 0, frozen = 0, behind = 0;
+    for (let frame = 0; frame < frames; frame++) {
+      now += frameMs;
+      while (now >= tickAt) {
+        server.step((tickAt - ranAt) / 1000); ranAt = tickAt;
+        const f = BLx.gameWire.frame();
+        server.motion(f, tickAt);
+        inFlight.push({ due: tickAt + 30 + rand() * 40, f });
+        tickAt += 100 + rand() * 30;
+      }
+      inFlight.sort((x, y) => x.due - y.due);
+      while (inFlight.length && inFlight[0].due <= now) handlers.motion(inFlight.shift().f);
+      serverWorld.update(Math.min(0.1, frameMs / 1000));
+      if (now - began > 5000) behind = Math.max(behind, serverWorld.stats.behind);
+      followers.forEach((cave, i) => {
+        const f = cave.follow, was = prior[i], d = f && was ? Math.hypot(f.x - was.x, f.z - was.z) : 0;
+        if (f && was && f.act === ACT.WALK && was.act === ACT.WALK && was.d > 0 && now - began > 5000) {
+          steady++;
+          if (d === 0) frozen++;
+          else if (Math.abs(d - was.d) > 0.25 * was.d) lurches++;
+        }
+        prior[i] = f ? { x: f.x, z: f.z, act: f.act, d } : null;
+      });
+    }
+    return { mode: serverWorld.stats.mode, steady, lurches, frozen, behind };
+  };
+  const fast = follow(1000 / 60, 60 * 60), slow = follow(200, 5 * 60);
   return {
-    serverSmooth: serverWorld.stats.mode === "server" && steady > 3000 && (frozen + lurches) * 50 < steady,
+    serverSmooth: fast.mode === "server" && fast.steady > 3000 && (fast.frozen + fast.lurches) * 50 < fast.steady && fast.behind < 600,
+    serverPaced: slow.mode === "server" && slow.behind > 0 && slow.behind < 600,
     localSmooth: localWorld.stats.mode === "local" && walkFrames > 600 && stillFrames * 50 < walkFrames,
     startsPlaced: worker, startsSeated: seated, startsOnce: !z.start && Math.hypot(z.p.x - 7, z.p.z + 3) > 0.5,
     deterministic: rows(a) === rows(b) && rows(a) !== rows(world(6)),
