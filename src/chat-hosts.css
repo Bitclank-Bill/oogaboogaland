@@ -18,11 +18,11 @@
 /* The visitor's own chat, gone straight back to: an amber edge and its host line in amber. */
 .hc-chat-mine { border-color: rgba(216, 137, 43, 0.55); }
 .hc-chat-mine .hc-chat-row-host { color: var(--accent-text); }
-/* The chat the visitor is in, at the head of the list while they browse it: green as the island's speaking ring, its
-   edge doubled and a soft glow, its line saying so; pressing it goes back into the chat. */
-.hc-chat-here { border-color: #22c55e; box-shadow: inset 0 0 0 1px #22c55e, 0 0 12px rgba(34, 197, 94, 0.25); background: rgba(34, 197, 94, 0.08); }
-.hc-chat-here .hc-chat-row-host { color: #8ee6a8; font-weight: 700; }
-.hc-chat-here .hc-chat-row-host::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: #22c55e; vertical-align: 1px; animation: hc-here 1.6s ease-in-out infinite; }
+/* The chat the visitor is in, at the head of the list while they browse it: Ooga Chat's purple (its speakers' ring and
+   the visitor's own dot), its edge doubled and a soft glow, its line saying so; pressing it goes back into the chat. */
+.hc-chat-here { border-color: #b18aff; box-shadow: inset 0 0 0 1px #b18aff, 0 0 12px rgba(177, 138, 255, 0.3); background: rgba(177, 138, 255, 0.1); }
+.hc-chat-here .hc-chat-row-host { color: #d4bfff; font-weight: 700; }
+.hc-chat-here .hc-chat-row-host::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: #b18aff; vertical-align: 1px; animation: hc-here 1.6s ease-in-out infinite; }
 @keyframes hc-here { 50% { opacity: 0.35; } }
 @media (prefers-reduced-motion: reduce) { .hc-chat-here .hc-chat-row-host::before { animation: none; } }
 /* A preview opened from inside another chat: what joining does there, and for its host the ways to step down first. */

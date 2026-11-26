@@ -127,12 +127,13 @@ to the right of the zone tag), a role badge on host and co-host
 tiles, and the footer's Request to speak or, for a host, End chat beside Leave chat.
 
 **Back to chats keeps the chat.** It shows the list over the chat, which goes on playing, its voice and the visitor's
-place in it untouched: the chat leads the list in green, "You're in this chat · hosting / co-hosting / speaking /
-listening", and pressing it goes back in. Another chat pressed meanwhile opens its preview with a line saying what
-joining does to the one the visitor is in, by their role there: a listener leaves it, a speaker leaves its stage, a
-co-host stops co-hosting; Join as listener or Ask to speak leaves it and joins, Stay changes nothing. Its host instead
-gets "Make <name> host and join" for each co-host (one reconnecting dimmed) and "End <title> and join", and no way in
-without stepping down. Only Leave chat, End chat or choosing another chat leaves one.
+place in it untouched: the chat leads the list in Ooga Chat's purple, "You're in this chat · hosting / co-hosting / speaking /
+listening", and pressing it goes back in. Another chat pressed meanwhile opens its preview with one short line saying
+what joining does to the one the visitor is in, by their role there ("Joining leaves <title>.", "You're on stage in
+<title>. Joining leaves it.", "You co-host <title>. Joining ends that."); Join as listener or Ask to speak leaves it and
+joins, Stay changes nothing. Its host instead ("You host <title>. Hand it to a co-host or end it first.") gets "Make
+<name> host and join" for each co-host (one reconnecting dimmed) and "End chat and join", and no way in without
+stepping down. Only Leave chat, End chat or choosing another chat leaves one.
 
 A host steps down only by handing the chat over or ending it. While hosting they stay on the stage (Mute, no Leave
 Voice, in the chat's footer and in Ooga Chat's account rows alike), and the island's own Join voice, which otherwise

@@ -26,7 +26,7 @@
 //   invite that answers it goes straight on to Join Voice (the visitor's own press), the invite card showing only if that
 //   could not start; Start a chat for a GitHub account, one dialog (`startDialog`): a title
 //   prefilled "<name>'s chat", three picture cards for the land, Voice only first (`startZone()` chosen first), Start chat and Cancel, with
-//   the server's refusal in words; from inside a chat (`browsing`), that chat leads the list in green, "You're in this
+//   the server's refusal in words; from inside a chat (`browsing`), that chat leads the list in purple, "You're in this
 //   chat · <role>", and brings it back, and another chat's preview says what joining does there by the visitor's role
 //   (a host makes a co-host host or ends it first, `hostGo`) and leaves it as it joins (`moveTo`), Stay changing nothing;
 // - in a chat: Back to chats (to the list, the chat playing on: `browse`) and its title; for a host or co-host the Requests chip, in the panel's title right of the
@@ -435,9 +435,9 @@
       previewCancel.textContent = switching ? "Stay" : "Cancel";
       if (switching) {
         const here = room.title, cohosts = host ? cohostsOf() : [];
-        switchLine.textContent = host ? (cohosts.length ? `You're hosting ${here}. Make a co-host its host, or end it, to join.` : `You're hosting ${here}. End it to join, or make someone a co-host there first.`)
-          : rank === "cohost" ? `You're a co-host in ${here}. Joining leaves it, and you stop co-hosting.`
-          : state.voice.role === "speaker" ? `You're speaking in ${here}. Joining leaves its stage.` : `You're listening to ${here}. Joining leaves it.`;
+        switchLine.textContent = host ? (cohosts.length ? `You host ${here}. Hand it to a co-host or end it first.` : `You host ${here}. End it first, or add a co-host to hand it to.`)
+          : rank === "cohost" ? `You co-host ${here}. Joining ends that.`
+          : state.voice.role === "speaker" ? `You're on stage in ${here}. Joining leaves it.` : `Joining leaves ${here}.`;
         hostGo.replaceChildren(...(host ? [...cohosts.map((p) => {
           const b = button("foot-button", `Make ${p.display} host and join`);
           b.disabled = !!p.reconnecting;
@@ -445,7 +445,7 @@
           b.addEventListener("click", () => send("handover", { id: p.id }, (msg) => { if (msg && msg.ok) moveTo(entry, false); }), { signal });
           return b;
         }), (() => {
-          const b = button("foot-button hc-danger", `End ${here} and join`);
+          const b = button("foot-button hc-danger", "End chat and join");
           b.addEventListener("click", () => send("end", {}, (msg) => { if (msg && msg.ok) moveTo(entry, false); }), { signal });
           return b;
         })()] : []));
