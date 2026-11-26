@@ -392,6 +392,20 @@ test("a name the account chose: the island's own name for it, kept across sign-i
   delete names[583231];
   await s.signIn("github");
   assert.equal((await (await s.me()).json()).identity.display, "wicked", "an island with no name for it leaves the chosen one");
+  // A rename on the island reaches the principal the caller holds, so the answer built on this very refresh names it.
+  const principal = await s.env.DB.prepare("SELECT * FROM principals").first();
+  names[583231] = "Wicked Smart";
+  const t0 = await s.env.DB.prepare("SELECT checked_at FROM capabilities").first("checked_at");
+  await capabilityFor(s.env, principal, { now: t0 + REFRESH_MS + 1 });
+  assert.equal(principal.chosen_display, "Wicked Smart", "the held principal carries the island's new name at once");
+  // A write that fails is best effort: the answer still comes, and the principal keeps the name it had.
+  const held = await s.env.DB.prepare("SELECT * FROM principals").first(), prepare = s.env.DB.prepare.bind(s.env.DB);
+  names[583231] = "Another";
+  s.env.DB.prepare = (sql) => /chosen_display = \?2/.test(sql) ? { bind: () => ({ run: async () => { throw new Error("D1 down"); } }) } : prepare(sql);
+  const answer = await capabilityFor(s.env, held, { force: true, now: t0 + REFRESH_MS + 2 });
+  s.env.DB.prepare = prepare;
+  assert.equal(answer.state, "eligible", "a failed name write leaves the answer standing");
+  assert.equal(held.chosen_display, "Wicked Smart", "and the name it had");
 });
 
 test("expired sessions and abandoned sign-ins are purged daily", async () => {

@@ -38,8 +38,9 @@ export const displayOf = (principal) => principal.chosen_display || principal.di
 /** Keep the name a principal chose (cleaned as any display is); written only when it changed. */
 export const chooseDisplay = async (db, principalId, display) => {
   const clean = cleanDisplay(display, "");
-  if (!clean) return;
+  if (!clean) return null;
   await db.prepare("UPDATE principals SET chosen_display = ?2 WHERE id = ?1 AND chosen_display IS NOT ?2").bind(principalId, clean).run();
+  return clean;
 };
 
 /** The picture's key: changes whenever its address does, so a cached face is never stale or another's. */

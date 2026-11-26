@@ -365,10 +365,16 @@
     const ctx = { actions, media, install: () => device.install(), reload: () => device.reload(), storageKey: (name) => storageKey(adapter.kind, name),
       demo: fixture ? adapter.demo : null, feed: feedOogas, commons: { model: town, send: (data) => !!member && member.send(data),
         // The name field: saved as the island's display name, then the Commons is joined again so the Room's welcome,
-        // and every line after it, carries the new name (as an island page joins again after its own rename).
+        // and every line after it, carries the new name (as an island page joins again after its own rename). The
+        // account is read again so the footer shows it at once, and the audience socket, whose assertion names the
+        // visitor's own tile, opened again, unless the visitor is speaking (their tile catches up at the next reconnect).
         rename: async (display) => {
           const result = await adapter.commonsName(display);
-          if (result.ok) { membership = null; joinCommons(); }
+          if (result.ok) {
+            membership = null; joinCommons();
+            auth.check("rename");
+            if (listening && state.voice.role !== "speaker" && !state.voice.busy) { const kept = listening; listening = null; listen(kept); }
+          }
           return result;
         } },
       contributors: () => adapter.contributors(),

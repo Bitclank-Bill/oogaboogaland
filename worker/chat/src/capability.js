@@ -48,7 +48,12 @@ export const capabilityFor = async (env, principal, { force = false, now = Date.
   ).bind(principal.id, state, character, policy, now).run();
   // The island's own name for the account, where it has one (an older island sends none): this account's chosen name
   // here too (session.js `displayOf`), so a rename on the island reaches Ooga Chat at the next answer.
-  if (typeof answer.display === "string" && answer.display) await chooseDisplay(env.DB, principal.id, answer.display);
+  // Also on the principal the caller holds, so the answer it builds now (`/api/chat/me`, an audience socket's assertion)
+  // carries it. A best-effort write: one that fails is asked again at the next answer, and never keeps a revocation from
+  // ending live speaking below.
+  if (typeof answer.display === "string" && answer.display) {
+    try { const chosen = await chooseDisplay(env.DB, principal.id, answer.display); if (chosen) principal.chosen_display = chosen; } catch { /* next answer */ }
+  }
   if (wasEligible && state !== "eligible") {
     const ending = revokeLive(env, principal, "eligibility");
     if (waitUntil) waitUntil(ending); else await ending;
