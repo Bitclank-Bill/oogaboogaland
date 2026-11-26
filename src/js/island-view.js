@@ -188,7 +188,7 @@
       }
       bg.filter = "none";
     };
-    image.addEventListener("load", () => { backFor = ""; paintBack(); changed(); });
+    image.addEventListener("load", () => { backFor = ""; paintBack(); paint(); changed(); });
     // A face a walker, made when their row first comes (or their picture changes): the picture and its initial.
     const faces = new Map();
     // Each walker's Ooga for the 3D view: the character the chat names for them, else their login (hashed, as the island does).
@@ -239,9 +239,13 @@
     let fit = 1, offX = 0, offY = 0, fontR = 0, font = "";
     // One frame: the 3D view (or the picture), then each walker's face, eased to where it is. Drawn again while a walker
     // moves, the camera is turned or the size changed; at most once every `interval`, the frame's own cost eased in.
+    // Until there is something to show (the 3D view this device takes, or else the map's picture), the stage stands
+    // dark with a loading ring (chat-hosts.css `[data-wait]`) and nothing is drawn: never the map flashing up first.
+    const waiting = () => !live && mode !== "failed" && (mode === "loading" || wants3d() || !(image.complete && image.naturalWidth));
     const frame = (now) => {
       raf = 0;
       if (!shown || !active) return;
+      if (waiting()) { g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, width, height); dirty = false; return; }
       const moving = state.count > 0, lively = !!live && live.tick < 1000;
       if (!dirty && !moving && !lively && !(live && live.moved)) return;
       const interval = Math.min(FRAME_MAX, Math.max(FRAME_MIN, cost * 1.5, lively ? live.tick : 0));
@@ -393,6 +397,48 @@
     reset.addEventListener("click", (e) => { if (e.detail) reset.blur(); live?.reset(); reset.hidden = true; changed(); });
     // --- full screen: the view over the page, the chat's panel beside it ---
     let isFull = false, marker = null, host = null, browserFull = false;
+    // Full screen's split (`--iv-split`, the view's share of a tall screen's height; `--iv-side`, the panel's width
+    // beside it on a wide one), dragged by the handle on the line between them (a layer of its own over both, so it
+    // stands on that line rather than inside the view) and kept for this browser
+    // (localStorage `ooga-island-view-split`).
+    const SPLIT_KEY = "ooga-island-view-split", tall = () => innerHeight > innerWidth;
+    let split = { tall: 0.55, wide: 0 };
+    try { const kept = JSON.parse(localStorage.getItem(SPLIT_KEY) || "null"); if (kept && typeof kept === "object") split = { tall: Number.isFinite(kept.tall) ? kept.tall : 0.55, wide: Number.isFinite(kept.wide) ? kept.wide : 0 }; } catch { /* the default */ }
+    const applySplit = () => {
+      const doc = document.documentElement.style;
+      doc.setProperty("--iv-split", `${Math.round(split.tall * 1000) / 10}dvh`);
+      if (split.wide) doc.setProperty("--iv-side", `${Math.round(split.wide)}px`); else doc.removeProperty("--iv-side");
+    };
+    const handle = document.createElement("div");
+    handle.className = "iv-split";
+    handle.setAttribute("role", "separator");
+    handle.setAttribute("aria-label", "Drag to resize the island view");
+    handle.tabIndex = 0;
+    let dragging = false;
+    const dragTo = (x, y) => {
+      if (tall()) split.tall = Math.max(0.25, Math.min(0.85, y / innerHeight));
+      else split.wide = Math.max(280, Math.min(innerWidth * 0.7, innerWidth - x));
+      applySplit();
+    };
+    handle.addEventListener("pointerdown", (e) => { dragging = true; handle.dataset.drag = ""; handle.setPointerCapture(e.pointerId); e.preventDefault(); });
+    handle.addEventListener("pointermove", (e) => { if (dragging) dragTo(e.clientX, e.clientY); });
+    const drop = () => {
+      if (!dragging) return;
+      dragging = false;
+      delete handle.dataset.drag;
+      try { localStorage.setItem(SPLIT_KEY, JSON.stringify(split)); } catch { /* kept for this page */ }
+    };
+    handle.addEventListener("pointerup", drop);
+    handle.addEventListener("pointercancel", drop);
+    // From the keyboard: the arrows move the split a twentieth at a time.
+    handle.addEventListener("keydown", (e) => {
+      const k = e.key, step = tall() ? innerHeight / 20 : innerWidth / 20;
+      if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(k)) return;
+      e.preventDefault();
+      if (tall()) dragTo(0, split.tall * innerHeight + (k === "ArrowUp" || k === "ArrowLeft" ? -step : step));
+      else dragTo(innerWidth - (split.wide || Math.min(420, innerWidth * 0.42)) + (k === "ArrowLeft" || k === "ArrowUp" ? -step : step), 0);
+      try { localStorage.setItem(SPLIT_KEY, JSON.stringify(split)); } catch { /* kept for this page */ }
+    });
     const setFull = (on) => {
       if (on === isFull || !fullscreen) return;
       isFull = on;
@@ -404,12 +450,17 @@
         host.className = "iv-full-host";
         document.body.append(host);
         host.append(node);
+        document.body.append(handle);
+        applySplit();
         doc.classList.add("iv-full");
         if (doc.requestFullscreen && !document.fullscreenElement) doc.requestFullscreen().then(() => { browserFull = true; }, () => {});
       } else {
         doc.classList.remove("iv-full");
         if (marker) { marker.replaceWith(node); marker = null; }
         host?.remove(); host = null;
+        handle.remove();
+        dragging = false;
+        delete handle.dataset.drag;
         if (browserFull && document.fullscreenElement) document.exitFullscreen().catch(() => {});
         browserFull = false;
       }
@@ -439,6 +490,7 @@
       if (fold.title !== fwords) { fold.title = fwords; fold.setAttribute("aria-label", fwords); }
       fold.setAttribute("aria-pressed", String(!folded));
       stage.dataset.live = mode === "3d" ? "on" : mode;
+      if (waiting()) stage.dataset.wait = ""; else delete stage.dataset.wait;
       const words = isFull ? "Exit full screen" : "Full screen";
       if (full.title !== words) { full.title = words; full.setAttribute("aria-label", words); }
       mark.setAttribute("d", isFull ? FULL_OUT : FULL_IN);

@@ -30418,11 +30418,12 @@ const hostedIslandView = (phone) => ({ name: phone ? "hosted chats island view p
   const left = await until((s) => !s.shown && !s.room);
   await b.sleep(300);
   // A view closed while it shows and draws stops drawing for good.
-  await b.evaluate(`window.__ivLone = BL.islandView.create({ picture: "", faceOf: () => "" });
+  // With the island's own picture, as the page gives it: a view with nothing to show yet only waits (`waiting`).
+  await b.evaluate(`window.__ivLone = BL.islandView.create({ picture: BL.islandViewArt.main, faceOf: () => "" });
     document.body.append(__ivLone.node);
     __ivLone.walk({ type: "walk", seq: 1, p: ["gh:1", 1, 2, 3, 0] });
     __ivLone.update({ place: true, rows: [{ id: "gh:1", display: "A", login: "a", walking: true }], talking: [], speaking: false, self: null, active: true })`);
-  await b.sleep(200);
+  for (let t = 0; t < 3000 && !await b.evaluate(`__ivLone.drawing`); t += 100) await b.sleep(100);
   const drewAlone = await b.evaluate(`__ivLone.drawing`);
   await b.evaluate(`__ivLone.dispose()`);
   await b.sleep(300);
