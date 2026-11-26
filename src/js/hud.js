@@ -81,7 +81,8 @@
     if (updateOffered) return;
     updateOffered = true;
     const lines = [];
-    for (const panel of document.querySelectorAll("#sheet .sheet-content > .panel")) {
+    // By id, wherever each panel stands: a tab dragged into a window of its own lives beside #sheet, not in it.
+    for (const panel of document.querySelectorAll("#bananas-panel, #roster-panel, #players-panel, #chat-panel, #cloud-panel")) {
       const line = document.createElement("p"), words = document.createElement("span"), take = document.createElement("button"), hide = document.createElement("button");
       line.className = "reload-line";
       line.setAttribute("role", "status");
