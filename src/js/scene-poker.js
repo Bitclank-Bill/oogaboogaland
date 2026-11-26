@@ -237,6 +237,18 @@
     lights[off+4]=1.83*glow;lights[off+5]=.92*glow;lights[off+6]=.37*glow;lights[off+7]=0;
   };
   const clamp = BL.math.clamp;
+  // Only the first thirteen lights change with the action in the hall. The fixed lamps follow in tier order, put in on
+  // `enter` and again on walking back from the lounge, whose shrine lights take slots past the thirteenth.
+  const installHallLamps = () => {
+    const models = BL.pokerModels, lights = renderOpts.lights;
+    let offset = 13 * 8;
+    lights.set(models.CLUB_LIGHTS, offset); offset += models.CLUB_LIGHTS.length;
+    hallLightCount = offset / 8;
+    for (const lamps of [models.COLONNADE, models.LOUNGE_LIGHTS, models.GAME_LIGHTS]) {
+      lights.set(lamps, offset); offset += lamps.length;
+    }
+    highLightCount = offset / 8;
+  };
   let salons = null, salon = -1, telescope = null, byScope = false, photo = null, terraceScope = null, updateWall = null, shownWins = null, nextMorningCheck = 0;
   const nearScope = () => {
     const mount=salon===2?salons.roofScope:terraceScope, p=avatar.root.position;
@@ -1303,15 +1315,7 @@
     panel = BL.pokerHud.create(action, select, faceFor, emote, hud, npcAt); panel.setDealer(room.tables[0].agent);
     Themes.light(renderOpts, renderer.kind);
     if (salon===0) Object.assign(renderOpts,loungeFill);
-    // Only the first thirteen lights change with the action. Install the fixed lamps in tier order once per visit.
-    const models = BL.pokerModels, lights = renderOpts.lights;
-    let offset = 13 * 8;
-    lights.set(models.CLUB_LIGHTS, offset); offset += models.CLUB_LIGHTS.length;
-    hallLightCount = offset / 8;
-    for (const lamps of [models.COLONNADE, models.LOUNGE_LIGHTS, models.GAME_LIGHTS]) {
-      lights.set(lamps, offset); offset += lamps.length;
-    }
-    highLightCount = offset / 8;
+    installHallLamps();
     // The polished floor mirrors the room on WebGL: its gloss sheet stands on the scene's root, off the room's. The night
     // stands over the vault beside the room.
     if (room.floor.gloss && renderer.kind === "webgl2") S.addChild(root, room.floor.gloss);
@@ -1364,7 +1368,7 @@
         if(next!==0)salons.heirlooms.away();
         salon=next;salons.show(next);hud.setAreaLabel(next<0?"Ember Den":currentSalon().name);
         if(next===0) Object.assign(renderOpts,loungeFill);
-        else Themes.light(renderOpts,renderer.kind);
+        else {Themes.light(renderOpts,renderer.kind);installHallLamps();}
       }
     }
     stepCarry(dt);
