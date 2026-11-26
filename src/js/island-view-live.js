@@ -184,11 +184,14 @@
       }
       for (let i = 0; i < node.children.length; i++) headCorners(node.children[i]);
     };
-    const headOf = (cave, out) => {
+    // `seen`: false too for a head wholly out of the view, so a bench panned away leaves no names stacked at the edge
+    // (remote-players.js skips a cloud speaker's the same way; a walker's keeps to the edge).
+    const headOf = (cave, out, seen = false) => {
       if (!cave || !cave.root.visible || !cave.parts.head) return false;
       headMinX = Infinity; headMaxX = -Infinity; headTop = Infinity;
       headCorners(cave.parts.head);
       if (headTop === Infinity) return false;
+      if (seen && (headMaxX < 0 || headMinX > renderer.size.width || headTop > renderer.size.height)) return false;
       out.x = (headMinX + headMaxX) / 2; out.y = headTop;
       return true;
     };
@@ -452,7 +455,7 @@
       // pixels, written into `out`: false when it isn't shown or is out of the view.
       walkerHead: (i, out) => headOf(slots[i] && slots[i].cave, out),
       // The same for the speaker on cloud perch `i`: their id, or "" for an empty perch or one out of the view.
-      perchHead(i, out) { const p = perches[i]; return p && p.cave && headOf(p.cave, out) ? p.id : ""; },
+      perchHead(i, out) { const p = perches[i]; return p && p.cave && headOf(p.cave, out, true) ? p.id : ""; },
       perches: SEATS,
       resize() { renderer.resize(); self.moved = true; },
       // A drag: round the island and up or down (radians).

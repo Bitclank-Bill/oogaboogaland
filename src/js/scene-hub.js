@@ -1848,7 +1848,9 @@
     // The lanterns' and lamp strings' own, which a chat's copy puts out.
     for (let i = 0; i < copyDressingLights.length; i += 4) {
       const lamp = addLamp({ glow: 0, flare: 0, visible: true }, DRESSING_LAMPS[copyDressingLights[i + 3]], copyDressingLights[i], copyDressingLights[i + 1], copyDressingLights[i + 2], true, (i / 4) % 5, `dressing-lit:${i / 4}`);
-      lamp.nightOnly = true;
+      // The coil's light (its pieces are the theme's, so here now) burns with its charge, not the clock.
+      lamp.nightOnly = copyDressingLights[i + 3] !== BL.dressing.COIL_LIGHT;
+      if (!lamp.nightOnly && coilCharge) coilCharge.lamp = lamp;
       lamp.copyOff = true;
     }
     dressingLights.length = copyDressingLights.length = 0;

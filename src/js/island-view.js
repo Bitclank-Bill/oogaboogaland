@@ -488,7 +488,8 @@
     const applySplit = () => {
       const doc = document.documentElement.style;
       doc.setProperty("--iv-split", `${Math.round(split.tall * 1000) / 10}dvh`);
-      if (split.wide) doc.setProperty("--iv-side", `${Math.round(split.wide)}px`); else doc.removeProperty("--iv-side");
+      // Held to the window as it is now, whatever size it was dragged on (and on every resize, being CSS's to work out).
+      if (split.wide) doc.setProperty("--iv-side", `clamp(280px, ${Math.round(split.wide)}px, 70vw)`); else doc.removeProperty("--iv-side");
     };
     const handle = document.createElement("div");
     handle.className = "iv-split";
@@ -517,7 +518,7 @@
       if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(k)) return;
       e.preventDefault();
       if (tall()) dragTo(0, split.tall * innerHeight + (k === "ArrowUp" || k === "ArrowLeft" ? -step : step));
-      else dragTo(innerWidth - (split.wide || Math.min(420, innerWidth * 0.42)) + (k === "ArrowLeft" || k === "ArrowUp" ? -step : step), 0);
+      else dragTo(innerWidth - (split.wide ? Math.max(280, Math.min(innerWidth * 0.7, split.wide)) : Math.min(420, innerWidth * 0.42)) + (k === "ArrowLeft" || k === "ArrowUp" ? -step : step), 0);
       try { localStorage.setItem(SPLIT_KEY, JSON.stringify(split)); } catch { /* kept for this page */ }
     });
     const setFull = (on) => {
