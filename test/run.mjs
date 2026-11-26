@@ -47240,6 +47240,25 @@ const chatClientChecks = async () => {
     unread.join() === "0,1,2,2,0,1,0", unread.join());
   record("ooga chat client: lost receipts time out to a stable retry; edited identical drafts and newer sends survive old receipts; explicit logout clears local text; Unicode, invalid controls and old-server gating use the shared policy", waiting && uncertain && stable && revision && late && policy && unicode && gated && restored && input.value === "" && C.stats.lines === 0 && timers.size === 0, JSON.stringify({ waiting, uncertain, stable, revision, late, policy, lines: C.stats.lines, timers: timers.size }));
 };
+// A rename from the island or Ooga Chat (worker/src/renames.js) reaches an open page with no rejoin: another player's
+// record and the roster, and the page's own account in place (its own rename's answer checks it is the same object).
+const renameWireChecks = async BL => {
+  const f = netFixture(BL, () => ({ ok: true, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "Tester", display: "Tester" } }) }), 0);
+  await f.net.start();
+  const ws = f.sockets[0], message = v => ws.onmessage({ data: JSON.stringify(v) });
+  message({ t: "welcome", you: { id: 71 }, now: Date.now(), features: [], players: [{ id: 2, login: "anna", display: "Anna", zone: "outside" }] });
+  let rosterCalls = 0, heard = 0;
+  const offRoster = f.net.subscribeRoster(() => rosterCalls++), off = f.net.subscribe(() => heard++);
+  const me = f.net.state.me;
+  message({ t: "renamed", id: 2, display: "Anna Bold" });
+  message({ t: "renamed", id: 71, display: "Tester Two" });
+  message({ t: "renamed", id: 2, display: "bad\u0000" });
+  message({ t: "renamed", id: 2, display: "x".repeat(51) });
+  const anna = f.net.remotes.get(2).display, mine = { same: f.net.state.me === me, display: f.net.state.me.display };
+  offRoster(); off(); f.net.dispose();
+  record("live renames: another player's name and the page's own account change in place, telling the roster and the account row, and a malformed name is dropped",
+    anna === "Anna Bold" && mine.same && mine.display === "Tester Two" && rosterCalls >= 1 && heard >= 1, JSON.stringify({ anna, mine, rosterCalls, heard }));
+};
 // Reactions and the raised hand share one room bucket (worker/src/room.js reactToken); the page spends its mirror of it.
 const reactionWireChecks = async BL => {
   const f = netFixture(BL, () => ({ ok: true, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "Tester", display: "Tester" } }) }), 0);
@@ -51733,6 +51752,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   await privatePadChecks();
   await playersColumnChecks();
   await reactionWireChecks(BL);
+  await renameWireChecks(BL);
   await persistentSlotChecks(BL);
   await chalkboardClientChecks(BL);
   await chalkboardEraserChecks(BL);
