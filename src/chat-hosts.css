@@ -45,13 +45,17 @@
 .panel-title > .hc-room-bar { flex: 1 1 auto; min-width: 0; }
 /* There Back to chats is its arrow alone (its words kept for assistive technology) and the title keeps to one line,
    cut short with its whole self in its title, so the chips and buttons beside it never squeeze it into a column. */
-.panel-title > .hc-room-bar .hc-room-back { flex: none; font-size: 0; }
+.panel-title > .hc-room-bar .hc-room-back { flex: none; display: inline-flex; align-items: center; justify-content: center; min-width: 20px; font-size: 0; }
 @media (pointer: coarse) { .panel .panel-title > .hc-room-bar .hc-room-back { min-width: 34px; min-height: 30px; padding: 0; } }
-.panel-title > .hc-room-bar .hc-room-back::before { content: "‹"; font-size: 22px; line-height: 1; }
+/* The arrow drawn, not a "‹" glyph (which sits low, at the letters' x-height): a chevron centred on the title's
+   capitals. */
+.panel-title > .hc-room-bar .hc-room-back::before { content: ""; width: 7px; height: 7px; border-bottom: 2px solid currentColor; border-left: 2px solid currentColor; transform: translate(1.5px, -1px) rotate(45deg); }
 .panel-title > .hc-room-bar .hc-room-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; overflow-wrap: normal; }
 .panel-title:has(> .hc-room-bar:not([hidden])) > :is(h2, h3) { display: none; }
 .panel[data-space="on"] .cloud-foot-name, .panel:has(.hc-chat-here) .cloud-foot-name { display: none; }
 .hc-dock { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
+/* Empty, it takes no row, so the panel's gap under the title is not doubled. */
+.hc-dock:empty { display: none; }
 .hc-chat-notice { flex: none; margin: 0; color: var(--accent-text); font-size: 11px; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6); }
 .hc-chat-notice:empty { display: none; }
 /* A notice floats, taking no room: over the top of the roster (its host stands in the panel's flow at no height, the

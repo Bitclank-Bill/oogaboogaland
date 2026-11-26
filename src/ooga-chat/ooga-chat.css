@@ -346,10 +346,10 @@ body {
   .oc-tab-face { padding: 6px 11px 4px; }
   .oc-slab { padding: 14px 16px; }
 }
-/* At every width the panels keep tight: their own padding at 8px, their rows 6px apart, the emoji bar and the footer
+/* At every width the panels keep tight: their own padding at 6px over and under and 8px at the sides, their rows 6px apart, the emoji bar and the footer
    at the panel's 8px, and in a chat the island view and the roster of faces out to the panel's sides, square, meeting
    with no gap. */
-.oc .oc-panel { gap: 6px; padding: 8px 8px 6px; }
+.oc .oc-panel { gap: 6px; padding: 6px 8px; }
 .oc .oc-panel > .panel-foot { gap: 6px 12px; }
 .oc .oc-panel > .panel-foot > .reactions { margin-top: 0; }
 .oc .oc-panel.oc-panel > :is(.hc-room-strip, .cloud-roster) { margin-right: -8px; margin-left: -8px; border-right-width: 0; border-left-width: 0; border-radius: 0; }
