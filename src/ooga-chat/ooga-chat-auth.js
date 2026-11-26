@@ -66,6 +66,8 @@
   };
   const create = ({ adapter, media, now = () => Date.now(), timers = { set: (fn, ms) => setTimeout(fn, ms), clear: (id) => clearTimeout(id) }, onChange = () => {} }) => {
     let boot = null, timer = null, lastCheck = -Infinity, ticket = 0, disposed = false;
+    // A name heard live, its account and its retries (`renamed`, below).
+    let heard = null, heardTries = 0, heardTimer = null;
     let state = { auth: "checking", session: null, notice: null, busy: false }, open = false;
     // Every change passes here: capture is released before anyone hears of the new state. `open` is whether Join voice
     // was allowed when last said, so a window that passed between two changes still counts as a loss. A loss that is
@@ -82,6 +84,8 @@
       if (disposed) return;
       const was = state.session;
       state = { ...state, ...patch };
+      // A name heard for one account is never another's (signing out does not pass `adopt`).
+      if (heard && (!state.session || state.session.identity.principal !== heard.principal)) forgetHeard();
       const is = state.session, opened = gates(state, now()).joinVoice;
       if (was && (!is || is.identity.principal !== was.identity.principal)) media.release(is ? "identity" : why);
       else if (open && !opened && lost(is, why)) media.release(why);
@@ -112,9 +116,13 @@
     // A name heard live (`renamed(display)`: the island's worker/src/renames.js, through the Commons) is this account's
     // name at once, here as in the footer, so a check under way never shows the old one, and the server is asked for it
     // (`refresh`). An answer still carrying another name (the server's island answer was under its REFRESH_SOON_MS) keeps
-    // the heard one and asks again once that window has passed, RENAME_TRIES at most; one that agrees ends it.
+    // the heard one and asks again once that window has passed, RENAME_TRIES at most; one that agrees ends it. The name is
+    // the account's it was heard for (`heard.principal`): signed out, expired or another account forgets it.
     const RENAME_AGAIN_MS = 11 * 1000, RENAME_BUSY_MS = 1500, RENAME_TRIES = 3;
-    let heard = null, heardTries = 0, heardTimer = null;
+    const forgetHeard = () => {
+      heard = null;
+      if (heardTimer !== null) { timers.clear(heardTimer); heardTimer = null; }
+    };
     const named = (is, display) => is && is.identity.display !== display ? { ...is, identity: { ...is.identity, display } } : is;
     const askRenamed = (wait) => {
       if (heardTimer !== null) timers.clear(heardTimer);
@@ -126,7 +134,7 @@
     };
     const renamed = (display) => {
       if (disposed || !state.session || typeof display !== "string" || !display || state.session.identity.display === display) return;
-      heard = display;
+      heard = { display, principal: state.session.identity.principal };
       heardTries = 0;
       set({ session: named(state.session, display) }, "renamed");
       askRenamed(0);
@@ -136,12 +144,13 @@
         set({ notice: next ? NOTICE.held : null });
         return;
       }
-      if (heard && next) {
-        if (next.identity.display === heard) heard = null;
+      if (heard && (!next || next.identity.principal !== heard.principal)) forgetHeard();
+      if (heard) {
+        if (next.identity.display === heard.display) forgetHeard();
         else {
-          next = named(next, heard);
+          next = named(next, heard.display);
           if (why === "renamed" && ++heardTries < RENAME_TRIES) askRenamed(RENAME_AGAIN_MS);
-          else if (why === "renamed") heard = null;
+          else if (why === "renamed") forgetHeard();
         }
       }
       const expired = !!state.session && !next;
@@ -238,7 +247,7 @@
     const dispose = () => {
       disposed = true;
       stop();
-      if (heardTimer !== null) timers.clear(heardTimer);
+      forgetHeard();
     };
     return { start, check, renamed, signIn, signOut, retry, resume, dispose, get state() { return state; }, get timed() { return timer !== null; } };
   };

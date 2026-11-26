@@ -50212,8 +50212,25 @@ const oogaChatChecks = async () => {
   const agreed = renaming.auth.state.session.identity.display === "New Name" && renaming.log.filter((entry) => entry === "session").length === renameAsks + 1;
   await renaming.advance(60_000);
   const settled = renaming.log.filter((entry) => entry === "session").length === renameAsks + 1;
-  record("Ooga Chat account: a name heard live is the account's at once, kept over an answer still carrying the old one, which is asked again after the server's window, until one agrees",
-    atOnce && renameAsks === 2 && keptOverOld && agreed && settled, JSON.stringify({ atOnce, renameAsks, keptOverOld, agreed, settled }));
+  // The heard name is that account's alone: a check answering another account (switched in another tab) gives it its own
+  // name and asks nothing more, and signing out forgets it.
+  const switching = await signedIn(account("github", "speaker", "eligible", { identity: { display: "Old Name" } }));
+  switching.auth.renamed("New Name");
+  switching.answer = account("github", "someone", "eligible", { identity: { display: "Someone" } });
+  await switching.advance(0);
+  await new Promise((resolve) => setImmediate(resolve));
+  const switchAsks = switching.log.filter((entry) => entry === "session").length;
+  await switching.advance(60_000);
+  const ownName = switching.auth.state.session.identity.display === "Someone" && switching.log.filter((entry) => entry === "session").length === switchAsks;
+  const leavingName = await signedIn(account("github", "speaker", "eligible", { identity: { display: "Old Name" } }));
+  leavingName.auth.renamed("New Name");
+  leavingName.auth.signOut();
+  await new Promise((resolve) => setImmediate(resolve));
+  const leaveAsks = leavingName.log.filter((entry) => entry === "session").length;
+  await leavingName.advance(60_000);
+  const forgotten = leavingName.log.filter((entry) => entry === "session").length === leaveAsks;
+  record("Ooga Chat account: a name heard live is the account's at once, kept over an answer still carrying the old one, which is asked again after the server's window, until one agrees; never given to another account, and forgotten on signing out",
+    atOnce && renameAsks === 2 && keptOverOld && agreed && settled && ownName && forgotten, JSON.stringify({ atOnce, renameAsks, keptOverOld, agreed, settled, ownName, forgotten }));
 
   // The audience roster (audience protocol 1): the space's one order, and a snapshot and deltas applied whole or not at
   // all, by participant and generation, with stale ones dropped and gaps found.
