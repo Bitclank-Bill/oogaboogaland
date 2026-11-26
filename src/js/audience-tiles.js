@@ -55,7 +55,7 @@
       li.dataset.id = id;
       li.tabIndex = -1;
       li.append(face, name, role);
-      return { li, portrait, react, hand, text, voice, word, item: null, img: null, url: null, popped, reacting: null, mark: 0 };
+      return { li, portrait, react, hand, text, voice, word, item: null, img: null, url: null, popped, reacting: null, mark: 0, lv: -1 };
     };
     const ooga = (entry) => entry.portrait.replaceChildren(BL.nativeIcons.svg("roster"));
     const cancel = (entry) => {
@@ -142,6 +142,15 @@
         paint(entry);
       }
     };
+    // The speakers' voice marks' levels (style.css `--lv`), from the page's meter read (`level(id)`, 0 to 1), each written
+    // only when it moves by a step a tile can show.
+    const levels = (level) => {
+      for (const [id, entry] of tiles) {
+        if (entry.voice.hidden) continue;
+        const v = Math.round(level(id) * 20) / 20;
+        if (entry.lv !== v) { entry.lv = v; entry.voice.style.setProperty("--lv", String(v)); }
+      }
+    };
     const prune = (keep) => {
       for (const [id, entry] of tiles) if (!keep(id)) drop(id, entry);
     };
@@ -194,7 +203,7 @@
       list.removeEventListener("focusin", onFocus);
       clear();
     };
-    return { draw, repaint, prune, pop, clear, dispose, get count() { return tiles.size; } };
+    return { draw, repaint, levels, prune, pop, clear, dispose, get count() { return tiles.size; } };
   };
   BL.audienceTiles = { create };
 })();

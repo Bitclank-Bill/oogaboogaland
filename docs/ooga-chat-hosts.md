@@ -419,9 +419,19 @@ As built (`src/js/island-view.js`, drawn by the shared views, chat-hosts.js, in 
   changes. A line for screen readers alone says who walks it and who sits on the clouds over it (every speaker not walking it: "Bea is
   on a cloud over the island"), or that the chat waits for its speakers. In a short panel (the island's sheet) it gives
   way first, down to a 96px stage, so a row of the roster, the emoji bar and the footer stay in sight.
-- **Go there**, in the stage's lower left corner, for a speaker (`goThere`): on the island the Ooga onto the chat's island
-  and back (chat-copy.js); in Ooga Chat, for a GitHub account, the same chat opened on the island in the same tab
-  (`ooga-chat-hosts.js`; the bootstrap's `island`, the edge's `ISLAND_ORIGIN`): `/?chat=<id>&mic=<0|1>#handoff=<ticket>`.
+- **Go there**, in the stage's lower left corner in the view's own dark glass, worded by the chat's land
+  (`chatHosts.joinWords`: Join on island for Main Island, one entry a land), for a speaker (`goThere`): on the island
+  the Ooga onto the chat's island and back (chat-copy.js); in Ooga Chat, for a GitHub account, the same chat opened on
+  the island in the same tab (`ooga-chat-hosts.js`; the bootstrap's `island`, the edge's `ISLAND_ORIGIN`):
+  `/?chat=<id>&mic=<0|1>#handoff=<ticket>`.
+- **The chat's bar** (agreed 2026-11-26): the title over a line of how many speak and listen; Requests (a host's), and
+  Share for everyone, which hands out the page's own `/?chat=<id>` through the system's share sheet or copies it (the
+  island opens such a link listening, as above; Ooga Chat keeps it in the tab through a sign-in and opens that chat's
+  preview); alone in a chat, the roster offers the same Share under "Just you so far". In Ooga Chat's full screen the
+  bar is solid across the view's top, the view under it with its full-screen button lined up under Share, a host's
+  Requests panel drops from the bar over the view with a ×, and the split's grabber shows a few seconds as it opens.
+  End chat is red and asks first; while in a chat, Ooga Chat's list tabs' footers are the chat's own (the microphone,
+  End chat for its host or Leave chat).
   A speaker on the stage first asks the chat for a ticket (`{ type: "handoff" }`, answered `{ ticket }`): the Audience
   mints one for that account alone, keeps it a minute (`HANDOFF_MS`) with whether the microphone was open, and a fresh
   one replaces the last. The ticket rides in the fragment, which no server or log sees. The island page (`chat-call.js`)

@@ -46,7 +46,13 @@
       else actions.joinVoice();
     }, { signal });
     out.addEventListener("click", () => actions.signOut(), { signal });
-    const node = make("div", "account", login, make("span", "account-who", name, room), make("span", "account-actions", mute, voice, out), voiceWhy);
+    // While in a hosted chat this row is the chat's own footer, as the Ooga Chat tab has it (chat-hosts.js): the
+    // microphone, then End chat for its host or Leave chat for anyone else, through the shared views (`actions.endChat`,
+    // `actions.leaveChat`, ooga-chat-hosts.js); the name, the count and Sign out wait until the visitor is out of it.
+    const end = button("foot-button account-end hc-danger", "End chat"), leave = button("foot-button account-leave", "Leave chat");
+    end.addEventListener("click", () => actions.endChat?.(end), { signal });
+    leave.addEventListener("click", () => actions.leaveChat?.(leave), { signal });
+    const node = make("div", "account", login, make("span", "account-who", name, room), make("span", "account-actions", mute, voice, end, leave, out), voiceWhy);
     let last = null;
     const update = (state) => {
       last = state;
@@ -56,11 +62,16 @@
       set(login, "textContent", state.busy === "github" ? PROVIDERS.github[1] : PROVIDERS.github[0]);
       attr(login, "aria-busy", String(state.busy === "github"));
       set(node, "hidden", !live || !who && !signing && login.hidden);
-      set(name, "hidden", !who);
-      set(out, "hidden", !who && !signing);
+      const inChat = !!who && !!state.boot?.features.chats && !!state.room;
+      if (node.dataset.chat !== String(inChat)) node.dataset.chat = String(inChat);
+      const host = inChat && state.room.you?.rank === "host";
+      set(end, "hidden", !host);
+      set(leave, "hidden", !inChat || host);
+      set(name, "hidden", !who || inChat);
+      set(out, "hidden", inChat || !who && !signing);
       set(out, "textContent", signing ? "Signing out…" : "Sign out");
       set(out, "disabled", !!state.busy);
-      const here = !!who && state.commons.status === "live" && !!model.state.you;
+      const here = !!who && !inChat && state.commons.status === "live" && !!model.state.you;
       set(room, "textContent", here ? `${onlineCount(model, publicOf(state), !!state.room)} online` : "");
       set(room, "hidden", !here);
       if (node.dataset.live !== String(here)) node.dataset.live = String(here);
@@ -84,7 +95,7 @@
       }
       set(mute, "hidden", chats && !speaker);
       set(mute, "disabled", !speaker || !!state.busy || state.voice.busy);
-      set(mute, "textContent", speaker && !state.voice.muted ? "Mute" : "Unmute");
+      BL.nativeIcons.label(mute, speaker && !state.voice.muted ? "Mute" : "Unmute");
       attr(mute, "aria-pressed", String(speaker && state.voice.muted));
       micLook(mute, !mute.disabled && speaker, state.voice.muted);
       // A host stays on the stage while hosting, as the Ooga Chat tab's footer has it (chat-hosts.js): Mute, never Leave voice.

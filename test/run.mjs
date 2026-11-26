@@ -30519,7 +30519,7 @@ const hostedChatCopy = (phone) => ({ name: phone ? "hosted chat copy phone" : "h
   await b.sleep(400);
   await b.screenshot(join(shots, `home-${w}.png`));
   // Again, sent home by the copy this time.
-  await until((s) => !!s.go && !s.go.disabled && s.go.text === "Go there");
+  await until((s) => !!s.go && !s.go.disabled && s.go.text === "Join on island");
   await click(".hc-go");
   await until((s) => s.sockets.length === 4);
   await b.evaluate(`__copyFixture.welcome(3, { features: ["call-v1", "copy-v1", "react-v1"], copy: { chat: ${JSON.stringify(chat)}, zone: "main" } })`);
@@ -30527,7 +30527,7 @@ const hostedChatCopy = (phone) => ({ name: phone ? "hosted chat copy phone" : "h
   await b.evaluate(`__copyFixture.say(3, { t: "kick", reason: "stage" })`);
   const kicked = await until((s) => s.phase === "idle");
   const near = (a, c) => !!a && !!c && Math.hypot(a[0] - c[0], a[1] - c[1], a[2] - c[2]) < 0.05;
-  const ok = { ready: ready.go.text === "Go there" && ready.voice && ready.npcs > 0, fits,
+  const ok = { ready: ready.go.text === "Join on island" && ready.voice && ready.npcs > 0, fits,
     went: gone.sockets[0].travel === 1 && gone.sockets[0].closed === 1000 && gone.sockets[1].url.endsWith(`/api/chats/${chat}/world`),
     there: there.on && there.seals > 0 && there.npcs === 0 && there.gorillas === 0 && there.shown && !there.voice && !there.tess && ready.tess && Math.hypot(there.at[0], there.at[2]) < 9 && there.go.text === "Go back",
     sealed: barred.mouths.length > 0 && barred.mouths.every(Boolean) && barred.hq.length > 0 && !barred.hq.some(Boolean) && !barred.open,
@@ -30535,7 +30535,7 @@ const hostedChatCopy = (phone) => ({ name: phone ? "hosted chat copy phone" : "h
       && seated.benches.every((c) => c.bottom >= seated.treetop + 1.5 && c.radius === seated.benches[0].radius) && !!spot,
     back: near(back.at, home) && !back.on && back.seals === 0 && back.npcs > 0 && back.tess && back.sockets[1].closed === 1000 && back.sockets[2].url.endsWith("/room") && back.target === null && back.benches.length === 0,
     kicked: near(kicked.at, home) && !kicked.on && kicked.npcs > 0 && kicked.sockets.length === 5 && kicked.sockets[4].url.endsWith("/room") && kicked.sockets[3].closed === 1000 };
-  record(`hosted chat copy${phone ? " (390 px)" : ""}: Go there on a Main Island chat's island view tells the island it is travelling, closes it clean and opens the chat's copy; there the Ooga stands by the pile with the NPCs, gorillas, Tess and island Join voice gone and every cave mouth sealed but HQ's ramps, open down to HQ; the copy's speakers sit a bench at a time on clouds above the treetops; Leave and a kick from the copy bring the Ooga back to exactly where it stood with the island as it was`,
+  record(`hosted chat copy${phone ? " (390 px)" : ""}: Join on island on a Main Island chat's island view tells the island it is travelling, closes it clean and opens the chat's copy; there the Ooga stands by the pile with the NPCs, gorillas, Tess and island Join voice gone and every cave mouth sealed but HQ's ramps, open down to HQ; the copy's speakers sit a bench at a time on clouds above the treetops; Leave and a kick from the copy bring the Ooga back to exactly where it stood with the island as it was`,
     Object.values(ok).every(Boolean), JSON.stringify({ ok, ready, gone: gone.sockets, there, barred, seated: seated.benches, treetop: seated.treetop, spot, back, kicked, home }));
 } });
 scene("hub", { label: "guest likeness", query: "pos=0", opts: { initScript: GUEST_LIKENESS_INIT }, steps: [hubGuestLikeness] });
@@ -42618,7 +42618,7 @@ const footstepChecks = BL => {
 // when someone is listed, without touching the visitor's own mute or telling the room. voice.js runs in a fixture
 // with a fake microphone, peer connection and Worker, so every state of the track is read directly.
 const voiceAloneChecks = async () => {
-  const source=readFileSync(join(root,"src/js/duel-listening.js"),"utf8")+readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/room-acoustics.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8"),ops=[],netMuted=[],emits=[];
+  const source=readFileSync(join(root,"src/js/native-icons.js"),"utf8")+readFileSync(join(root,"src/js/duel-listening.js"),"utf8")+readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/room-acoustics.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8"),ops=[],netMuted=[],emits=[];
   const track={enabled:true,stop(){},clone(){return {enabled:true,stop(){}};}},stream={getAudioTracks:()=>[track],getTracks:()=>[track]};
   class Pc {constructor(){this.connectionState="connected";this.iceGatheringState="complete";this.localDescription={sdp:"v=0\r\na=candidate:1 1 udp 2122260223 127.0.0.1 9 typ host\r\n"};}addTransceiver(){return {mid:"0"};}async createOffer(){return {};}async createAnswer(){return {};}async setLocalDescription(){}async setRemoteDescription(){}addEventListener(){}removeEventListener(){}getTransceivers(){return [];}close(){}}
   class Audio {constructor(){this.muted=false;}pause(){}play(){return Promise.resolve();}}
@@ -42666,7 +42666,7 @@ const voiceAloneChecks = async () => {
 };
 // A fresh fixture of voice.js for the failure paths: whatever the SFU refuses is named in `failing`, and timers are held.
 const voiceFailureChecks = async () => {
-  const source=readFileSync(join(root,"src/js/duel-listening.js"),"utf8")+readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/room-acoustics.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8");
+  const source=readFileSync(join(root,"src/js/native-icons.js"),"utf8")+readFileSync(join(root,"src/js/duel-listening.js"),"utf8")+readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/room-acoustics.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8");
   const page=(joined=false,AudioContext=undefined)=>{
     const timers=[],calls=[],bodies=[],pcs=[],failing=new Set(),holds=new Map();let holdLeave=null;
     const track={enabled:true,stopped:false,stop(){this.stopped=true;},clone(){return {enabled:true,stop(){}};}},stream={getAudioTracks:()=>[track],getTracks:()=>[track]};
@@ -42748,7 +42748,7 @@ const voiceFailureChecks = async () => {
 // Someone who pressed Join voice comes back in voice, muted, on their first press, with the microphone never touched
 // until they unmute; only Leave voice ends that. voice.js runs per "page" over one shared localStorage.
 const voiceReturnChecks = async () => {
-  const source=readFileSync(join(root,"src/js/duel-listening.js"),"utf8")+readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/room-acoustics.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8");
+  const source=readFileSync(join(root,"src/js/native-icons.js"),"utf8")+readFileSync(join(root,"src/js/duel-listening.js"),"utf8")+readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/room-acoustics.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8");
   const stored=new Map(),settle=()=>new Promise(r=>setTimeout(r,0));
   const page=({active=false,zone="outside",denied=false}={})=>{
     const ops=[],told=[],presses=new Map();let mics=0;
@@ -42841,7 +42841,7 @@ const voiceHandoffChecks = () => {
 };
 // iOS keeps every element at 1; both paths must sound the same at every step.
 const voiceHearingChecks = async () => {
-  const source=readFileSync(join(root,"src/js/duel-listening.js"),"utf8")+readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/room-acoustics.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8"),settle=()=>new Promise(r=>setTimeout(r,0));
+  const source=readFileSync(join(root,"src/js/native-icons.js"),"utf8")+readFileSync(join(root,"src/js/duel-listening.js"),"utf8")+readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/room-acoustics.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8"),settle=()=>new Promise(r=>setTimeout(r,0));
   const remote=(login,zone,x,z,placed=true)=>({login,zone,poseZone:placed?zone:null,x,y:0,z});
   const rig=(ios,webAudio=true,saved=null,store=new Map())=>{
     const ops=[],bodies=[],netMuted=[],timers=new Map(),els=[],pulled=[],gains=[],limiters=[],ctxs=[],handlers=new Map(),subscribers=new Set();let timerId=0,onTrack=null,captures=0;
@@ -47071,10 +47071,10 @@ const cloudPanelChecks = async BL => {
   const observers = [];
   const window = { BL: { audience: BL.audience, reactionPolicy: BL.reactionPolicy,
     net: { state, subscribe: sub("net"), subscribeAudience: sub("audience"), subscribeReactions: sub("reactions"), subscribeChatMembers: sub("chatMembers"), sendAudience: (type, fields) => { sent.push({ type, ...fields }); return true; }, logout() {} },
-    voice: { stats, support: () => ({ secure: true, webrtc: true, mic: true }), subscribe: sub("voice"), mutedLocally: login => local.has(login), muteLocal: (login, on) => on ? local.add(login) : local.delete(login), setMuted() {}, toggle() {}, leave() {}, speaking: () => false, inEarshot: () => true },
+    voice: { stats, support: () => ({ secure: true, webrtc: true, mic: true }), subscribe: sub("voice"), subscribeLevels: () => () => {}, level: () => 0, ownLevel: () => 0, mutedLocally: login => local.has(login), muteLocal: (login, on) => on ? local.add(login) : local.delete(login), setMuted() {}, toggle() {}, leave() {}, speaking: () => false, inEarshot: () => true },
     hud: { voiceIcon: el("svg"), voiceWords: (look, self) => `${look}${self ? " (you)" : ""}`, renderFaceIcon() {}, showAccount() {} },
     models: { caveman: () => ({}) }, contributors: { traitsFor: () => ({}) }, characters: { get: name => name === "ooga" ? {} : null },
-    nativeIcons: { svg: () => el("svg"), voice: () => el("svg") }, sheet: { visible: () => visible, watchViews() {}, attending: () => false, setBadge() {} },
+    nativeIcons: { svg: () => el("svg"), voice: () => el("svg"), label: (button, text) => { button.textContent = text; } }, sheet: { visible: () => visible, watchViews() {}, attending: () => false, setBadge() {} },
     // Hosted chats off (no call-v1): the panel keeps Main Island's roster.
     chatCall: { available: () => false, room: null, subscribe: () => () => {}, hear: () => () => {}, identity: () => null },
     reactions: { mount: (host, options) => { gate = options.handAllowed; }, refresh: () => refreshes.push(gate()) } } };
@@ -47212,7 +47212,7 @@ const persistentPanel = (BL, net, saved = new Map()) => {
     document: { createElement: make, getElementById: id => ids.get(id), body, addEventListener() {}, removeEventListener() {} },
     localStorage: { getItem: key => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value) }, Event: class {} };
   runInNewContext(["src/js/reaction-bar.js", "src/js/reactions.js"].map(file => readFileSync(join(root, file), "utf8")).join("\n"), context);
-  const bars = [...ids.values()].map(host => { const card = host.children[0]; return { card, buttons: [...card.children[0].children, card.children[2]] }; });
+  const bars = [...ids.values()].map(host => { const card = host.children[0]; return { card, buttons: [...card.children[0].children[0].children, card.children[2]] }; });
   const event = (slot, type, extra = {}, bar = 0) => {
     const e = { target: bars[bar].buttons[slot], button: 0, pointerId: 1, isPrimary: true, clientX: 0, clientY: 0, preventDefault() {}, ...extra };
     for (const fn of bars[bar].card.on[type] || []) fn(e);
@@ -47324,7 +47324,7 @@ const playersColumnChecks = async () => {
       net: { state: { room: "live", me: { login: "me", display: "Me" }, selfId: 1, online: 3, zone: "outside", hostId: 0, self: { x: 0, y: 0, z: 0, zone: "outside" }, voiceLinks: false, linkApp: [], clouds: [], chatMembers: new Map(), chatPeople }, remotes,
         voiceLink: () => "none", toggleVoiceLink() {}, subscribe() {}, subscribeRoster() {}, subscribeMoves() {}, subscribePresence() {}, subscribeReactions() {}, subscribeAudience() {}, subscribeClouds() {}, subscribeDuel() {} },
       hud: { voiceIcon: make("svg"), voiceWords: () => "In voice", toast() {} },
-      voice: { stats: { enabled: true, muted: false, speaking: false, radius: 0 }, fades: false, RADIUS_MIN: 5, RADIUS_MAX: 60, VOLUME_MAX: 2, subscribe() {}, speaking: () => false, inEarshot: () => true, mutedLocally: () => false, mutedByDuel: () => false, duel() {}, setMuteDuels() {}, volumeOf: () => 1, setVolume() {}, setRadius() {} },
+      voice: { stats: { enabled: true, muted: false, speaking: false, radius: 0 }, fades: false, RADIUS_MIN: 5, RADIUS_MAX: 60, VOLUME_MAX: 2, subscribe() {}, subscribeLevels() {}, level: () => 0, ownLevel: () => 0, speaking: () => false, inEarshot: () => true, mutedLocally: () => false, mutedByDuel: () => false, duel() {}, setMuteDuels() {}, volumeOf: () => 1, setVolume() {}, setRadius() {} },
       sheet: { visible: () => true, setBadge() {}, watchViews() {}, attending: () => true }, sound: { muted: false, subscribe() {} }, pilot: { turnToward() {} } });
     runInNewContext(await readFile(join(root, "src/js/players.js"), "utf8"), context);
     handlers.sheetchange();
@@ -49233,7 +49233,7 @@ const studioCatalogueProof = async () => {
 
 // Exercise the shipped voice lifecycle with deferred permissions/signaling and no real devices/network.
 const studioVoiceLifecycleProof = async () => {
-  const source=await readFile(join(root,"src/js/duel-listening.js"),"utf8")+await readFile(join(root,"src/js/room-acoustics.js"),"utf8")+await readFile(join(root,"src/js/voice.js"),"utf8");
+  const source=await readFile(join(root,"src/js/native-icons.js"),"utf8")+await readFile(join(root,"src/js/duel-listening.js"),"utf8")+await readFile(join(root,"src/js/room-acoustics.js"),"utf8")+await readFile(join(root,"src/js/voice.js"),"utf8");
   const fixture=(gathering="complete",candidate=true,failFirstPeer=false,voiceTurn=false,stunDead=false)=>{
     const calls=[],streams=[],peers=[],elements=[],timers=new Map(),failing=new Map(),clock={at:null};let timerId=0,gum=0,permission=null,publishResponse=null,deferred=null,peerAttempts=0;
     class Peer {
@@ -49552,7 +49552,7 @@ const listenOnlyMicStatusProof = async () => {
   const accountStart=source.indexOf("  const ROOM_WORDS"),accountEnd=source.indexOf("\n  // The microphone's note",accountStart);
   const nodes=new Map(),element=id=>{if(!nodes.has(id))nodes.set(id,{dataset:{},getAttribute(){return "";},setAttribute(){}});return nodes.get(id);};
   const voice={stats:{returning:true,muted:true,enabled:false,joining:false,micError:"",error:"WebRTC blocked"},ICE_BLOCKED:"WebRTC blocked",support:()=>({secure:true,webrtc:true,mic:true})};
-  const account={BL:{voice},document:{querySelectorAll:()=>[]},$:element};
+  const account={BL:{voice,nativeIcons:{label:(button,text)=>{button.textContent=text;}}},document:{querySelectorAll:()=>[]},$:element};
   runInNewContext(source.slice(accountStart,accountEnd)+";globalThis.showAccount=showAccount;",account);
   const live={backend:true,me:{display:"Listener"},room:"live",online:1};account.showAccount(live);
   const blockedReturn=element("account-mute").textContent==="Voice: WebRTC blocked"&&!element("account-mute").disabled&&!!element("account-mute").title;
@@ -50508,7 +50508,7 @@ const oogaChatChecks = async () => {
   const icons = load(["src/js/native-icons.js"], { window: {} }).nativeIcons;
   const inline = [...islandHtml.match(/<svg class="dsb-island-icon"[\s\S]*?<\/svg>/)[0].matchAll(/<path fill="([^"]+)" d="([^"]+)"\/>/g)].map((m) => `${m[1]} ${m[2]}`);
   const marks = { dsb: inline.join("|") === icons.ICONS.dsb[3].map(([fill, d]) => `${fill} ${d}`).join("|") && inline.length === 8,
-    voice: /BL\.nativeIcons\.voice\(\)/.test(readFileSync(join(root, "src/js/hud.js"), "utf8")) && icons.VOICE_PARTS.length === 5 };
+    voice: /BL\.nativeIcons\.voice\(\)/.test(readFileSync(join(root, "src/js/hud.js"), "utf8")) && typeof icons.mic === "function" && typeof icons.drawMic === "function" };
   record("Ooga Chat marks: DSB Land's is the island's own paths, and the voice mark is the one the island's roster draws",
     Object.values(marks).every(Boolean), JSON.stringify(marks));
 

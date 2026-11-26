@@ -367,6 +367,8 @@
     };
     let menu = null;
     const tiles = BL.audienceTiles.create(list, { mic: (id) => pressMic(ctx, id, id === self), menu: (...a) => menu?.(...a) });
+    // The speakers' marks fill with their voices' levels on each meter read (ooga-chat-media.js `subscribeLevels`).
+    const offLevels = ctx.media.subscribeLevels(() => tiles.levels((id) => id === self ? ctx.media.ownLevel() : ctx.media.level(id)));
     const render = () => {
       frame = 0;
       tiles.draw(people, describe);
@@ -424,6 +426,7 @@
       listeners.abort();
       cancelAnimationFrame(frame);
       offPop();
+      offLevels();
       tiles.dispose();
       volumeButtons.clear();
       foot.dispose();
@@ -468,7 +471,7 @@
       const source = "chat";
       if (name.dataset.source !== source) name.dataset.source = source;
       set(mute, "disabled", !speaker || !!state.busy || state.voice.busy);
-      set(mute, "textContent", speaker && !state.voice.muted ? "Mute" : "Unmute");
+      BL.nativeIcons.label(mute, speaker && !state.voice.muted ? "Mute" : "Unmute");
       attr(mute, "aria-pressed", String(speaker && state.voice.muted));
       micLook(mute, !mute.disabled && speaker, state.voice.muted);
       set(muteWhy, "textContent", speaker ? "" : "Join voice first to unmute.");

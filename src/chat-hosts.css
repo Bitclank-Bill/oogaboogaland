@@ -51,6 +51,40 @@
    capitals. */
 .panel-title > .hc-room-bar .hc-room-back::before { content: ""; width: 7px; height: 7px; border-bottom: 2px solid currentColor; border-left: 2px solid currentColor; transform: translate(1.5px, -1px) rotate(45deg); }
 .panel-title > .hc-room-bar .hc-room-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; overflow-wrap: normal; }
+/* The title over how many speak and listen, one line each. */
+.hc-room-titles { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; gap: 1px; }
+.hc-room-titles > .hc-room-title { line-height: 1.15; }
+.hc-room-count { overflow: hidden; color: rgba(243, 239, 228, 0.6); font-size: 10.5px; font-weight: 400; letter-spacing: 0.03em; white-space: nowrap; text-overflow: ellipsis; }
+.hc-room-count:empty { display: none; }
+/* In a chat on a narrow screen the land's tag (the Chats list and the preview say it) gives its room to the title. */
+@media (max-width: 479px) { .panel[data-space="on"] > .panel-title > .panel-chip:not(.hc-requests) { display: none; } }
+/* Share, a square button of its own size in the title's row, its icon drawn in the text's colour. */
+.hc-share {
+  flex: none; display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; cursor: pointer;
+  background: rgba(36, 32, 28, 0.72); box-shadow: inset 0 0 0 1px rgba(243, 239, 228, 0.12); color: rgba(243, 239, 228, 0.9);
+}
+.hc-share[hidden] { display: none; }
+.hc-share svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.hc-share:is(:hover, :focus-visible) { background: rgba(36, 32, 28, 0.92); color: var(--paper); }
+.hc-share:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+/* Alone in a chat: the roster gives its room to an invitation to share the chat. */
+.hc-alone { display: grid; flex: 1 1 auto; align-content: center; justify-items: center; gap: 6px; min-height: 0; padding: 12px; text-align: center; }
+.hc-alone[hidden] { display: none; }
+.hc-alone p { margin: 0; color: rgba(243, 239, 228, 0.7); font-size: 12px; }
+.hc-alone .hc-alone-head { color: var(--paper); font-size: 13px; font-weight: 700; }
+.hc-alone .hc-alone-share { margin-top: 4px; min-height: 36px; padding: 0 16px; }
+.panel:has(> .hc-alone:not([hidden])) > .cloud-roster { flex: none; min-height: 0; border-bottom-width: 0; }
+/* It continues the roster's slab out to the panel's sides, with no seam between them. */
+.panel[data-space="on"] > .hc-alone { margin: -10px -14px 0; border-width: 0; border-radius: 0; }
+/* The Requests panel's heading beside its × . */
+.hc-pop-top { display: flex; align-items: center; gap: 8px; }
+.hc-pop-top > .hc-pop-head { flex: 1 1 auto; min-width: 0; }
+.hc-pop-close {
+  flex: none; display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px;
+  background: rgba(243, 239, 228, 0.08); color: rgba(243, 239, 228, 0.85); font: inherit; font-size: 18px; line-height: 1; cursor: pointer;
+}
+.hc-pop-close:is(:hover, :focus-visible) { background: rgba(243, 239, 228, 0.16); color: var(--paper); }
+@media (pointer: coarse) { .hc-pop-close { width: 36px; height: 36px; } }
 .panel-title:has(> .hc-room-bar:not([hidden])) > :is(h2, h3) { display: none; }
 .panel[data-space="on"] .cloud-foot-name, .panel:has(.hc-chat-here) .cloud-foot-name { display: none; }
 .hc-dock { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
@@ -207,8 +241,15 @@
 .iv-reset, .iv-full-button { border-color: transparent; background: rgba(12, 10, 8, 0.32); color: rgba(243, 239, 228, 0.82); backdrop-filter: blur(2px); }
 .iv-reset:hover, .iv-full-button:hover, .iv-reset:focus-visible, .iv-full-button:focus-visible { background: rgba(12, 10, 8, 0.62); color: var(--paper); }
 .iv-reset:focus-visible, .iv-full-button:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
-/* Go there over the island, in its lower left corner. */
+/* Join on island over the island, in its lower left corner, in the same dark glass as the view's own buttons rather
+   than a wood slab over the scene. */
 .iv-stage > .hc-go { position: absolute; left: 6px; bottom: 6px; min-height: 28px; padding: 0 10px; font-size: 11px; }
+.iv-stage > .hc-go, .iv-stage > .hc-go:disabled {
+  border-color: rgba(243, 239, 228, 0.16); background: rgba(12, 10, 8, 0.45); color: rgba(243, 239, 228, 0.92);
+  box-shadow: none; text-shadow: 0 1px 1px rgba(0, 0, 0, 0.6); backdrop-filter: blur(2px);
+}
+.iv-stage > .hc-go:is(:hover, :focus-visible):not(:disabled) { background: rgba(12, 10, 8, 0.68); color: var(--paper); }
+.iv-stage > .hc-go:disabled { color: rgba(243, 239, 228, 0.55); }
 .iv-stage > .hc-go[hidden] { display: none; }
 @media (max-width: 399px) { .iv-reset, .iv-stage > .hc-go { min-height: 44px; } .iv-stage { max-height: 180px; } }
 /* Full screen (island-view.js `fullscreen`): the view in a layer over the page, its panel's empty strip folded away, and
@@ -227,7 +268,15 @@
   .iv-split { top: calc(var(--iv-split, 55dvh) - 11px); right: 0; bottom: auto; left: 0; width: auto; height: 22px; cursor: row-resize; }
   .iv-split::after { top: 10px; right: 0; bottom: auto; left: 0; width: auto; height: 2px; }
 }
-@media (prefers-reduced-motion: reduce) { .iv-split::after { transition: none; } }
+/* Its grabber, a pill on the seam's middle (island-view.js `hint`): shown a few seconds as full screen opens, then fading,
+   and back while touched, dragged, hovered or focused. */
+.iv-split::before {
+  content: ""; position: absolute; top: 50%; left: 50%; width: 5px; height: 40px; margin: -20px 0 0 -2.5px; border-radius: 3px;
+  background: rgba(243, 239, 228, 0.6); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35); opacity: 0; transition: opacity 400ms ease;
+}
+.iv-split:is([data-hint], [data-drag], :hover, :focus-visible)::before { opacity: 1; transition-duration: 150ms; }
+@media (max-aspect-ratio: 1 / 1) { .iv-split::before { width: 40px; height: 5px; margin: -2.5px 0 0 -20px; } }
+@media (prefers-reduced-motion: reduce) { .iv-split::after, .iv-split::before { transition: none; } }
 /* The view fills its side to the edges, square and with no border, meeting the panel beside or under it with no gap. */
 .iv-full-host .iv-stage { flex: 1 1 auto; aspect-ratio: auto; max-height: none; min-height: 0; border-width: 0; border-radius: 0; box-shadow: none; }
 html.iv-full .hc-room-strip { display: none; }

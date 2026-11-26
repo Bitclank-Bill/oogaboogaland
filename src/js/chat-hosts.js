@@ -72,6 +72,10 @@
   // A chat's land as its tag says it, short (the Chats list's rows, the preview, the chat's own title), its whole name the tag's title.
   const ZONE_TAGS = { none: "Voice", main: "Main", dsb: "DSB" };
   const tagged = (el, zone) => { el.textContent = ZONE_TAGS[zone] || ""; el.title = ZONE_NAMES[zone] || ""; return el; };
+  // The island view's way in (both pages' Go there), worded by where the chat is held, so a chat in another room or zone
+  // says its own: one entry here for each land a chat can be held in.
+  const JOIN_WORDS = { main: "Join on island", dsb: "Join in DSB Land" };
+  const joinWords = (zone) => JOIN_WORDS[zone] || "Join there";
   const rosterZone = (land) => (land === "dsb" ? "dsb" : "main");
   // Main Island's mark for the zone cards, drawn as DSB Land's is (native-icons.js `dsb`): a floating isle on the sea,
   // its grass, a cave mouth, a palm and the banana pile. Kept here, in the deferred chunk, off the first load.
@@ -508,7 +512,40 @@
     // Leaving, for everyone but the host, who hands the chat over first (`leaveAsHost`).
     const goOut = (at) => rank === "host" ? leaveAsHost(at) : chats.leave();
     back.addEventListener("click", () => browse(true), { signal });
-    const bar = make("div", "hc-room-bar", back, roomTitle, openTag);
+    // Under the title, how many speak and listen, so the roster needs no headings of its own.
+    const roomCount = make("span", "hc-room-count"), titles = make("span", "hc-room-titles", roomTitle, roomCount);
+    const bar = make("div", "hc-room-bar", back, titles, openTag);
+    // Share, for everyone in the chat: the page's own address opening this chat (`?chat=<id>`: the island opens it
+    // listening, chat-call.js; Ooga Chat its preview, ooga-chat-hosts.js), through the system's share sheet where there is
+    // one and copied otherwise. The same press from the alone note's Share link while nobody else has come.
+    const shareIcon = () => {
+      const el = document.createElementNS("http://www.w3.org/2000/svg", "svg"), path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      el.setAttribute("viewBox", "0 0 24 24");
+      el.setAttribute("aria-hidden", "true");
+      path.setAttribute("d", "M12 3v12M7.5 7.5 12 3l4.5 4.5M8 11H6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-2");
+      el.append(path);
+      return el;
+    };
+    const share = button("hc-share", "");
+    share.append(shareIcon());
+    share.setAttribute("aria-label", "Share this chat");
+    share.title = "Share this chat";
+    const shareChat = () => {
+      if (!room) return;
+      const url = new URL("/", location.origin);
+      url.searchParams.set("chat", room.id);
+      const link = url.href, copy = () => {
+        if (!navigator.clipboard) return say(`Share this link: ${link}`);
+        navigator.clipboard.writeText(link).then(() => say("Link copied"), () => say(`Share this link: ${link}`));
+      };
+      if (!navigator.share) return copy();
+      navigator.share({ title: room.title, text: `Join ${room.title}`, url: link }).catch((err) => { if (!err || err.name !== "AbortError") copy(); });
+    };
+    share.addEventListener("click", (e) => { if (e.detail) share.blur(); shareChat(); }, { signal });
+    const aloneShare = button("foot-button foot-primary hc-alone-share", "Share link");
+    aloneShare.addEventListener("click", (e) => { if (e.detail) aloneShare.blur(); shareChat(); }, { signal });
+    const alone = make("div", "slab hc-alone", make("p", "hc-alone-head", "Just you so far"), make("p", "hc-alone-note", "Share the link to bring people in."), aloneShare);
+    alone.hidden = true;
     // The host's switch, in the Requests pop-up: an open stage approves every request the moment it is made.
     const openSwitch = make("input"), openLabel = make("label", "hc-open-switch", openSwitch, make("span", "", "Open stage: anyone who asks may speak"));
     Object.assign(openSwitch, { type: "checkbox" });
@@ -557,7 +594,7 @@
     offerNotNow.addEventListener("click", () => answerOffer(false), { signal });
     offer.addEventListener("keydown", (event) => { if (event.key === "Escape") { event.preventDefault(); answerOffer(false); } }, { signal });
     const foot = space.parts.foot;
-    const ask = button("foot-button cloud-voice hc-ask", "Request to speak"), end = button("foot-button hc-end", "End chat"), leave = button("link hc-leave", "Leave chat");
+    const ask = button("foot-button cloud-voice hc-ask", "Request to speak"), end = button("foot-button hc-end hc-danger", "End chat"), leave = button("link hc-leave", "Leave chat");
     let asking = 0;
     // A request to speak the visitor pressed for: on an open stage its invite goes straight on to Start speaking
     // (`autoSpeak`: "asked" until the invite, "starting" as voice is joined, "joining" while it is, "done" after), and
@@ -577,8 +614,8 @@
       paint();
     }, { signal });
     leave.addEventListener("click", () => goOut(leave), { signal });
-    // Go there, on the island view: on the island's page the speaker's own Ooga onto the chat's island and back; in Ooga
-    // Chat the chat opened on the island, voice and all.
+    // Join on island (`joinWords`), on the island view: on the island's page the speaker's own Ooga onto the chat's island
+    // and back; in Ooga Chat the chat opened on the island, voice and all.
     const goTo = button("foot-button hc-go", "Go there");
     goTo.hidden = true;
     if (goThere) goTo.addEventListener("click", (e) => { if (e.detail) goTo.blur(); goThere.press(); }, { signal });
@@ -617,7 +654,13 @@
       pop.setAttribute("role", role);
       pop.setAttribute("aria-label", heading);
       const slab = make("div", "slab hc-pop-slab");
-      slab.append(make("p", "hc-pop-head", heading));
+      // The Requests panel has a × of its own beside its heading; the floating ones close with a press outside or Escape.
+      if (kind === "queue") {
+        const close = button("hc-pop-close", "×");
+        close.setAttribute("aria-label", "Close requests");
+        close.addEventListener("click", () => closePop());
+        slab.append(make("div", "hc-pop-top", make("p", "hc-pop-head", heading), close));
+      } else slab.append(make("p", "hc-pop-head", heading));
       for (const item of items) {
         if (item.node) { slab.append(item.node); continue; }
         const el = button(`foot-button${item.primary ? " foot-primary" : ""}${item.danger ? " hc-danger" : ""}${item.cancel ? " hc-pop-cancel" : ""}`, item.label);
@@ -638,11 +681,14 @@
       pop.replaceChildren(slab);
       const docked = kind === "queue";
       pop.classList.toggle("hc-docked", docked);
+      // A confirmation asked for from another panel (End chat or Leave chat in a list tab's footer, `endFrom`,
+      // `leaveFrom`) stands in that panel, the one on screen.
+      const home = !docked && at && at.closest && at.closest(".panel") || node;
       if (docked && pop.parentNode !== dock) dock.append(pop);
-      else if (!docked && pop.parentNode !== node) node.append(pop);
+      else if (!docked && pop.parentNode !== home) home.append(pop);
       pop.hidden = false;
       place();
-      if (focus) pop.querySelector("button")?.focus();
+      if (focus) (pop.querySelector("button:not(.hc-pop-close)") || pop.querySelector("button"))?.focus();
     };
     pop.addEventListener("keydown", (event) => {
       if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); return closePop(); }
@@ -714,7 +760,7 @@
         name.title = p.display;
         return { node: make("div", "hc-queue-row", name, approve, decline) };
       }) : [{ node: make("p", "hc-pop-note", "No requests right now.") }], ...back], "dialog", opening);
-      if (held && !pop.contains(document.activeElement)) (pop.querySelector("button") || requests).focus();
+      if (held && !pop.contains(document.activeElement)) (pop.querySelector("button:not(.hc-pop-close)") || requests).focus();
     };
     requests.addEventListener("click", () => popKind === "queue" ? closePop() : openQueue(true), { signal });
     end.addEventListener("click", () => confirm(end, "End this chat for everyone?", "End chat", () => send("end"), true), { signal });
@@ -855,7 +901,12 @@
       }
       set(roomTitle, "textContent", room ? room.title : "");
       set(roomTitle, "title", room ? room.title : "");
+      const speaking = people.reduce((n, p) => n + (p.role === "speaker" ? 1 : 0), 0);
+      set(roomCount, "textContent", room ? `${speaking} speaking · ${people.length - speaking} listening` : "");
       bar.hidden = !room || browsing;
+      set(share, "hidden", !room || browsing);
+      // Alone in the chat (only the visitor's own tile): an invitation to share it, in the roster's empty room.
+      set(alone, "hidden", !room || browsing || people.length > 1);
       // In a chat its bar (Back to chats, its title) takes the panel title's own line in place of the carved name.
       if (room && bar.parentNode !== head) (head.querySelector(":scope > h2, :scope > h3") || head.firstChild).after(bar);
       list.hidden = !!room && !browsing || !next.session;
@@ -872,7 +923,7 @@
     // has a speaker and can be seen, at the rate the view says this viewer can take (`hz`). `viewSent` is what this connection was last told
     // ("on:hz", "off", or null: nothing yet, or a new connection).
     const isle = islandView && BL.islandView ? BL.islandView.create({ picture: islandView.picture, faceOf: rowFace, loadLive: islandView.loadLive || null,
-      liveAllowed: islandView.liveAllowed, scenery: islandView.scenery, fullscreen: !!islandView.fullscreen, onFold: () => syncView() }) : null;
+      liveAllowed: islandView.liveAllowed, scenery: islandView.scenery, fullscreen: !!islandView.fullscreen, level: islandView.level || null, onFold: () => syncView() }) : null;
     let viewSent = null;
     function syncView() {
       if (!state) return;
@@ -902,13 +953,17 @@
     // The Requests chip stands in the panel's title, right of the zone tag.
     const zoneTag = head.querySelector(".panel-chip");
     if (zoneTag) zoneTag.after(requests); else head.append(requests);
+    // Share right of Requests, for everyone in the chat.
+    share.hidden = true;
+    requests.after(share);
     // The island view's fold button stands after them, in every Main Island chat.
-    if (isle) { isle.fold.hidden = true; requests.after(isle.fold); }
+    if (isle) { isle.fold.hidden = true; share.after(isle.fold); }
     // The strip over the roster: the island view, in every Main Island chat.
     const strip = make("div", "hc-room-strip");
     strip.hidden = true;
     if (isle) { strip.append(isle.node); isle.stage.append(goTo); }
     space.parts.list.before(strip);
+    space.parts.list.after(alone);
     node.append(starter.node, preview);
     space.parts.footRow.before(invite, offer);
     node.append(pop);
@@ -925,9 +980,13 @@
       offGo();
       isle?.dispose();
       space.setMenu(null);
-      for (const el of [bar, dock, noticeHost, list, strip, invite, offer, pop, goTo, ask, end, leave, requests, starter.node, preview]) el.remove();
+      for (const el of [bar, dock, noticeHost, list, strip, invite, offer, pop, goTo, ask, end, leave, requests, share, alone, starter.node, preview]) el.remove();
     };
-    return { update: (next) => { attach(); update(next); }, redraw: () => drawList(), preview: (entry, from = null) => showPreview(entry, from), dispose };
+    // The footer's End chat and Leave chat for a page's other panels while the visitor is in a chat (Ooga Chat's list
+    // tabs, ooga-chat-panels.js `accountRow`), asking from `at` as the chat's own buttons ask.
+    const endFrom = (at) => { if (room && rank === "host") confirm(at, "End this chat for everyone?", "End chat", () => send("end"), true); };
+    const leaveFrom = (at) => { if (room) goOut(at); };
+    return { update: (next) => { attach(); update(next); }, redraw: () => drawList(), preview: (entry, from = null) => showPreview(entry, from), endFrom, leaveFrom, dispose };
   };
-  BL.chatHosts = { create, startDialog, mainIsland, ZONE_NAMES, ZONE_TAGS, tagged, rosterZone, order, parseRemoved, parsePreview, parseEntry, parseList, actionsFor, noticeText, joinNames, REFUSED, STARTS, LIST_MS, ASKED_MS, COHOST_SLOTS };
+  BL.chatHosts = { create, startDialog, mainIsland, ZONE_NAMES, ZONE_TAGS, JOIN_WORDS, joinWords, tagged, rosterZone, order, parseRemoved, parsePreview, parseEntry, parseList, actionsFor, noticeText, joinNames, REFUSED, STARTS, LIST_MS, ASKED_MS, COHOST_SLOTS };
 })();

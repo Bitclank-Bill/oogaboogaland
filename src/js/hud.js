@@ -113,8 +113,6 @@
   const { lettering: signLettering, letter: letterSign } = BL.signGlyphs;
   for (const el of document.querySelectorAll("[data-sign]")) letterSign(el);
   BL.nativeIcons.fill(document);
-  // The roster's voice mark, a 9x9 pixel speaker shared with Ooga Chat; the stylesheet shows the parts each state needs.
-  const voiceIcon = BL.nativeIcons.voice();
   // Icons are rasterized once into an offscreen canvas.
   const ICON_PX = 48;
   const renderIcon = (item) => {
@@ -2090,7 +2088,8 @@
     const copy = !!state.copy;
     writeAccount("account-mute", "hidden", !live || copy);
     writeAccount("account-mute", "disabled", !micOn);
-    writeAccount("account-mute", "textContent", micOn && voice.reconnecting ? "Reconnecting voice" : failed ? `Voice: ${voiceFailure}` : asMic && !voice.muted ? "Mute" : "Unmute");
+    const muteWords = micOn && voice.reconnecting ? "Reconnecting voice" : failed ? `Voice: ${voiceFailure}` : asMic && !voice.muted ? "Mute" : "Unmute";
+    for (const el of fieldsFor("account-mute")) BL.nativeIcons.label(el, muteWords);
     writeAccount("account-voice", "hidden", !live || inVoice || copy);
     writeAccount("account-voice", "textContent", reason ? reason : voice.joining ? "Joining…" : voiceFailure ? `Voice: ${voiceFailure}` : "Join voice");
     writeAccount("account-voice", "disabled", !!reason);
@@ -2193,6 +2192,7 @@
     for (const row of liveRows.values()) {
       row.nextLook = row.nextLogin = "";
       row.nextHost = row.nextOnline = row.nextSelf = false;
+      row.voiceId = 0;
     }
     const net = BL.net.state, voice = BL.voice.stats;
     const signedIn = !!net.me, accountChanged = signedIn !== liveSignedIn;
@@ -2205,6 +2205,7 @@
         if (voice.enabled || voice.returning) {
           self.nextLook = voice.muted ? "muted" : voice.speaking ? "speaking" : "on";
           self.nextSelf = true;
+          self.voiceId = -1;
         }
         if (net.hostId === net.selfId) self.nextHost = true;
       }
@@ -2214,6 +2215,7 @@
         if (rec.voice) {
           row.nextLook = rec.muted ? "muted" : BL.voice.speaking(rec.id) ? "speaking" : "on";
           row.nextLogin = rec.login;
+          row.voiceId = rec.id;
         }
         if (rec.id === net.hostId) row.nextHost = true;
       }
@@ -2223,6 +2225,16 @@
       if (row.netOnline === row.nextOnline && !accountChanged) continue;
       row.netOnline = row.nextOnline;
       liveOnline(row);
+    }
+  };
+  // A speaking mark fills with its voice's level on each meter read (voice.js `subscribeLevels`, which the director
+  // hands this; style.css `--lv`): the visitor's own (`voiceId` -1) from their microphone, anyone else's from their voice.
+  const showLevels = () => {
+    if (!liveRows) return;
+    for (const row of liveRows.values()) {
+      if (!row.voiceId) continue;
+      const v = Math.round((row.voiceId < 0 ? BL.voice.ownLevel() : BL.voice.level(row.voiceId)) * 20) / 20;
+      if (row.lv !== v) { row.lv = v; row.voice.style.setProperty("--lv", String(v)); }
     }
   };
   // A game's Ooga list (`rows`, name to button, each button in its own <li>) held to one Ooga, a signed-in
@@ -2296,5 +2308,5 @@
     const clear = () => { for (const r of pool) r.li.remove(); pool.length = 0; };
     return { set, clear };
   };
-  BL.hud = { create, renderIcon, renderFaceIcon, renderBodyIcon, faceScores, signLettering, showAccount, openRecipe: showRecipe, showMic, showVoices, setDonationStats, donationValueText, toast, offerReload, holdRow, leaveTo, STATE_LABELS, statusFor, voiceIcon, voiceWords };
+  BL.hud = { create, renderIcon, renderFaceIcon, renderBodyIcon, faceScores, signLettering, showAccount, openRecipe: showRecipe, showMic, showVoices, showLevels, setDonationStats, donationValueText, toast, offerReload, holdRow, leaveTo, STATE_LABELS, statusFor, voiceWords };
 })();

@@ -156,7 +156,7 @@
     const dot = self && self.role === "speaker" && self.source === "chat" ? "chat" : "";
     if (footName.dataset.source !== dot) footName.dataset.source = dot;
     footerState = A.footer(model.you, voice.stats, reason);
-    set(mute, "textContent", footerState.mute.text);
+    BL.nativeIcons.label(mute, footerState.mute.text);
     set(mute, "disabled", footerState.mute.disabled);
     attr(mute, "aria-pressed", String(footerState.mute.pressed));
     if (mute.dataset.mic !== footerState.mute.mic) mute.dataset.mic = footerState.mute.mic;
@@ -302,7 +302,7 @@
     const speaker = v.role === "speaker", source = speaker ? "chat" : "";
     if (footName.dataset.source !== source) footName.dataset.source = source;
     set(mute, "disabled", !speaker || v.busy);
-    set(mute, "textContent", speaker && !v.muted ? "Mute" : "Unmute");
+    BL.nativeIcons.label(mute, speaker && !v.muted ? "Mute" : "Unmute");
     attr(mute, "aria-pressed", String(speaker && v.muted));
     const look = speaker && !mute.disabled ? v.muted ? "muted" : "live" : "";
     if (mute.dataset.mic !== look) mute.dataset.mic = look;
@@ -315,6 +315,20 @@
     else tiles.repaint(chatDescribe);
   };
   subs.push(calls.subscribe(paintChat));
+  // The speakers' marks fill with their voices' levels on each meter read: the chat's voice in a chat, the island's
+  // otherwise (keyed by account, as `describe` keys speaking), the visitor's own from their microphone.
+  const chatLevel = (id) => id === myId() ? calls.media.ownLevel() : calls.media.level(id);
+  const islandLevel = (id) => {
+    const row = model.rows.get(id);
+    if (!row) return 0;
+    return row.self ? voice.ownLevel() : id.startsWith("gh:") ? voice.level(Number(id.slice(3))) : 0;
+  };
+  const showLevels = () => { if (showing) tiles.levels(inChat() ? chatLevel : islandLevel); };
+  subs.push(voice.subscribeLevels(showLevels));
+  // The chat's controller is made with the first chat (chat-call.js `controller`) and kept, so it is heard from then on.
+  let unchatLevels = null;
+  subs.push(calls.subscribe(() => { if (!unchatLevels && calls.room) unchatLevels = calls.media.subscribeLevels(showLevels); }));
+  subs.push(() => unchatLevels?.());
   // The chat's emoji bar: its connection is the chat's socket, in the shape reaction-bar.js takes.
   const chatBarHost = $("cloud-chat-reactions");
   const linkSubs = new Set();

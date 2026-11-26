@@ -225,6 +225,20 @@
     // The voices heard: one context for their meters (`v.meter`, `{ source, analyser, quiet, speaking }`), one read of
     // them all every SPEAK_MS while any is metered, and who is talking (`talkKey` its participants, one a line).
     let hearAudio = null, hearTimer = 0, talking = IDLE.talking, talkKey = "";
+    // The voice marks' levels (`level`, `ownLevel`, native-icons.js `shapeLevel`): `subscribeLevels` is heard after each
+    // meter read while a level is up, and once more as it falls to nothing, so a mark empties.
+    // The heard voices' meter and the own one read on timers of their own, each with its own last word.
+    const levelSubs = new Set(), levelsWere = { heard: false, own: false };
+    const tellLevels = (from, up) => {
+      if (up || levelsWere[from]) for (const fn of levelSubs) fn();
+      levelsWere[from] = up;
+    };
+    const level = (participant) => {
+      for (const v of voices.values()) if (v.participant === participant) return v.meter ? v.meter.level : 0;
+      return 0;
+    };
+    const ownLevel = () => meter && state.speaking ? meter.level : 0;
+    const subscribeLevels = (fn) => { levelSubs.add(fn); return () => levelSubs.delete(fn); };
     const heardSamples = new Float32Array(SAMPLES);
     // TURN credentials, kept until shortly before they expire; requests waiting on the feed's `result`.
     let ice = null;
@@ -340,7 +354,7 @@
     };
     const readHeard = () => {
       hearTimer = 0;
-      let metered = false;
+      let metered = false, up = false;
       for (const v of voices.values()) {
         const m = v.meter;
         if (!m) continue;
@@ -348,11 +362,14 @@
         m.analyser.getFloatTimeDomainData(heardSamples);
         let sum = 0;
         for (let i = 0; i < SAMPLES; i++) sum += heardSamples[i] * heardSamples[i];
-        const loud = Math.sqrt(sum / SAMPLES) > SPEAK_ON;
+        const rms = Math.sqrt(sum / SAMPLES), loud = rms > SPEAK_ON;
         m.quiet = loud ? 0 : m.quiet + 1;
         m.speaking = loud || m.speaking && m.quiet < SPEAK_HOLD;
+        m.level = BL.nativeIcons.shapeLevel(m.level, rms);
+        if (m.level) up = true;
       }
       if (retalk()) emit();
+      tellLevels("heard", up);
       if (metered) hearTimer = timers.set(readHeard, SPEAK_MS);
     };
     const meterHeard = (v) => {
@@ -362,7 +379,7 @@
         hearAudio.addEventListener("statechange", emit);
       }
       const source = hearAudio.createMediaStreamSource(v.el.srcObject);
-      v.meter = { source, analyser: null, quiet: 0, speaking: false };
+      v.meter = { source, analyser: null, quiet: 0, speaking: false, level: 0 };
       const analyser = v.meter.analyser = hearAudio.createAnalyser();
       analyser.fftSize = SAMPLES;
       source.connect(analyser);
@@ -543,10 +560,12 @@
       meter.analyser.getFloatTimeDomainData(meter.samples);
       let sum = 0;
       for (let i = 0; i < SAMPLES; i++) sum += meter.samples[i] * meter.samples[i];
-      const loud = Math.sqrt(sum / SAMPLES) > SPEAK_ON;
+      const rms = Math.sqrt(sum / SAMPLES), loud = rms > SPEAK_ON;
       meter.quiet = loud ? 0 : meter.quiet + 1;
       const next = loud || speaking && meter.quiet < SPEAK_HOLD;
       if (next !== speaking) { speaking = next; emit(); }
+      meter.level = BL.nativeIcons.shapeLevel(meter.level, rms);
+      tellLevels("own", !!meter.level);
       meter.timer = timers.set(readMeter, SPEAK_MS);
     };
     const startMeter = (stream) => {
@@ -557,7 +576,7 @@
         analyser.fftSize = SAMPLES;
         source.connect(analyser);
         if (audio.state === "suspended") audio.resume().catch(() => {});
-        meter = { audio, source, analyser, samples: new Float32Array(SAMPLES), timer: 0, quiet: 0 };
+        meter = { audio, source, analyser, samples: new Float32Array(SAMPLES), timer: 0, quiet: 0, level: 0 };
         meter.timer = timers.set(readMeter, SPEAK_MS);
       } catch { meter = null; }
     };
@@ -983,7 +1002,7 @@
     };
     const supported = () => typeof R.PeerConnection === "function" && typeof R.getUserMedia === "function";
     const available = () => supported() && !!allowed();
-    return { heard, status, zone: zoneTo, join, leave, mute, muteLocal, mutedLocally, setVolume, volumeOf, VOLUME_MAX, duel, setMuteDuels, mutedByDuel, identify, release, stop, retry, remember, dispose,
+    return { heard, status, zone: zoneTo, join, leave, mute, level, ownLevel, subscribeLevels, muteLocal, mutedLocally, setVolume, volumeOf, VOLUME_MAX, duel, setMuteDuels, mutedByDuel, identify, release, stop, retry, remember, dispose,
       get available() { return available(); }, get why() { return supported() ? "" : NOTICE.unsupported; },
       get state() { return state; }, get stats() { return { ...stats, voices: voices.size, receiving: !!sub, publishing: !!pub, capturing: !!mic, connection, lease, relay: !!(ice && ice.relay), bare }; } };
   };
