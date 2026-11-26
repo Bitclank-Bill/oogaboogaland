@@ -509,8 +509,10 @@
     const moveTo = (entry, asSpeaker) => {
       if (previewing === entry) { previewFrom = null; preview.close(); }
       if (room && room.id !== entry.id) chats.leave();
-      // Joining as a speaker asks once the chat's snapshot is here (`update`).
+      // Joining as a speaker asks once the chat's snapshot is here (`update`). Joining as a listener is the visitor's word:
+      // a voice return waiting from a sign-out (below) is forgotten, so their microphone stays shut.
       wantSpeak = asSpeaker ? entry.id : "";
+      if (!asSpeaker) { returning = null; keep(null); }
       chats.open(entry);
     };
     const join = (asSpeaker) => { if (previewing) moveTo(previewing, asSpeaker); };
