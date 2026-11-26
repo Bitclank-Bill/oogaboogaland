@@ -16,7 +16,7 @@
 // changed and moves a tile only when the order moved. Portraits are drawn once a character a page. No timers, no
 // frame work.
 // The emoji bar (reactions.js `mount`, the same state as the other bars; the hand an active speaker's alone) sits
-// under the roster, the footer under it: the visitor's name, Mute or Unmute (always there), Join or Leave Voice and
+// under the roster, the footer under it: the visitor's name, Mute or Unmute (always there), Join or Leave voice and
 // Sign out, all through the island's own voice session (voice.js), never a second one.
 // Under `?debug=1&audience=fixture` the panel shows a generated roster of named samples for review, sending
 // nothing. Exports available, dispose, listeners, inChats, preview (below), online, stats.
@@ -306,7 +306,7 @@
     else tiles.repaint(chatDescribe);
   };
   // The island's voice, as hud.js `showAccount` paints the account rows: the microphone first, off until in voice, then
-  // Join Voice or Leave Voice, both only while signed in with the room live.
+  // Join voice or Leave voice, both only while signed in with the room live.
   const islandFoot = () => {
     const me = net.state.me, vs = voice.stats, live = !!me && net.state.room === "live";
     set(footName, "textContent", me ? me.display || me.login : "");
@@ -320,7 +320,7 @@
     const look = asMic ? vs.muted ? "muted" : "live" : "";
     if (mute.dataset.mic !== look) mute.dataset.mic = look;
     set(voiceButton, "hidden", !live);
-    set(voiceButton, "textContent", inVoice ? "Leave Voice" : reason || (vs.joining ? "Joining…" : "Join Voice"));
+    set(voiceButton, "textContent", inVoice ? "Leave voice" : reason || (vs.joining ? "Joining…" : "Join voice"));
     set(voiceButton, "disabled", footerState.voice.disabled);
     set(voiceButton, "title", "");
   };
@@ -335,7 +335,7 @@
     attr(mute, "aria-pressed", String(speaker && v.muted));
     const look = speaker && !mute.disabled ? v.muted ? "muted" : "live" : "";
     if (mute.dataset.mic !== look) mute.dataset.mic = look;
-    set(voiceButton, "textContent", speaker ? "Leave Voice" : v.phase === "leaving" ? "Leaving…" : v.busy ? "Joining…" : "Join Voice");
+    set(voiceButton, "textContent", speaker ? "Leave voice" : v.phase === "leaving" ? "Leaving…" : v.busy ? "Joining…" : "Join voice");
     set(voiceButton, "disabled", !speaker && (v.busy || room?.you?.speak !== "eligible"));
     set(voiceButton, "title", "");
   };

@@ -29,7 +29,7 @@
     stale: "This page is older than Ooga Chat's service."
   };
   const OFFLINE = "You're offline. Ooga Chat reconnects when you're back.";
-  // Join Voice while not speaking (ooga-chat-media.js's state): its words while joining or leaving, whether it can be
+  // Join voice while not speaking (ooga-chat-media.js's state): its words while joining or leaving, whether it can be
   // pressed, and why not, or what the last attempt said (a blocked microphone, a full zone).
   const joining = (state, allowed, media) => {
     const voice = state.voice, why = !state.device.online ? OFFLINE : allowed.why || (media.available ? voice.notice : media.why || "Voice opens here soon.");
@@ -434,8 +434,8 @@
     return { nodes: [heard, list, volumeBox, footRow], update, focus, dispose, parts: { list, footRow, foot: foot.parts }, setMenu(fn) { menu = fn; } };
   };
   // The Ooga Chat panel's footer, the island's: the visitor's name (Ooga Chat's purple dot while signed in), the
-  // fixed-width microphone, always first and off for a listener, Join Voice for a listener the server allows to speak
-  // (Leave Voice for a speaker), and Sign out. A disabled button says why on itself. The voice state is the seam's
+  // fixed-width microphone, always first and off for a listener, Join voice for a listener the server allows to speak
+  // (Leave voice for a speaker), and Sign out. A disabled button says why on itself. The voice state is the seam's
   // (`state.voice`); nothing here opens a microphone.
   // A microphone button's colour (style.css `data-mic`): green on Mute while the microphone is live, red on an enabled
   // Unmute, none while it is disabled or not a microphone button.
@@ -446,7 +446,7 @@
   const cloudFoot = ({ actions, media }) => {
     const listeners = new AbortController(), { signal } = listeners;
     const name = make("span", "cloud-foot-name");
-    const mute = button("foot-button cloud-mute", "Unmute"), join = button("foot-button cloud-voice", "Join Voice"), out = button("link", "Sign out");
+    const mute = button("foot-button cloud-mute", "Unmute"), join = button("foot-button cloud-voice", "Join voice"), out = button("link", "Sign out");
     const muteWhy = explain(mute), joinWhy = explain(join);
     mute.setAttribute("aria-pressed", "false");
     mute.addEventListener("click", (event) => {
@@ -477,7 +477,7 @@
       set(muteWhy, "textContent", speaker ? "" : "Join voice first to unmute.");
       const going = joining(state, allowed, media);
       join.dataset.voice = speaker ? "speaker" : "listener";
-      set(join, "textContent", speaker ? "Leave Voice" : going.words || "Join Voice");
+      set(join, "textContent", speaker ? "Leave voice" : going.words || "Join voice");
       set(join, "disabled", speaker ? !!state.busy : going.disabled);
       const why = speaker ? "" : going.why;
       set(joinWhy, "textContent", why);

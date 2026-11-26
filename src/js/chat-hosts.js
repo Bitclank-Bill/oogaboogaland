@@ -5,7 +5,7 @@
 // panel, `head` its title, after which the chat's bar, notice line and list go; `space` the panel's roster
 // (`parts.list`, `parts.footRow`, and the footer's `parts.foot.join`, `.mute` and `.actions`) and `setMenu(fn)`, the
 // tiles' menu hook; `chats` the page's `{ list(), start(body), preview(id), open(entry), leave(), request(type,
-// fields), hear(fn) }`; `joinVoice()` its Join Voice, called inside Start speaking's press; `faceOf(character)` a
+// fields), hear(fn) }`; `joinVoice()` its Join voice, called inside Start speaking's press; `faceOf(character)` a
 // portrait's address; `startZone()` the zone Start a chat chooses first; `toast(text)` the page's own announced toast,
 // if it has one; `shown()` whether the panel can be seen now; `rowFace(row)` a preview tile's portrait; `speakNow`
 // whether Request to speak reads Speak now on an open stage; `goThere`, `{ state(room), press(), subscribe(fn) }`: Go
@@ -13,7 +13,7 @@
 // Chat's: the chat opened on the island, ooga-chat-hosts.js), `state` its `{ label, words, disabled, title }` or null for none; `islandView`, `{ picture, loadLive(), liveAllowed(), scenery, fullscreen }`, the island view's
 // map picture, how the page brings the 3D view's code (none: the flat view alone, as the island page has it), where its
 // baked scenery is served and whether it offers full screen (island-view.js); `pageVoice`, true where the page has a voice
-// of its own outside a chat (the island's), whose Unmute and Join Voice the page paints in the footer until a chat is
+// of its own outside a chat (the island's), whose Unmute and Join voice the page paints in the footer until a chat is
 // chosen (cloud-panel.js). `update(state)` takes the page's state in Ooga Chat's
 // shape: `session.identity` (`provider`, `display`, `login`, `participant`), `room` (the chat chosen, with its
 // `you`), `voice` (`role`, `busy`, `elsewhere`), `device.online` and `audience.list` (the chat's rows in order);
@@ -25,7 +25,7 @@
 //   Open stage tag, its stage as the chat's circles (`rowFace(row)` their portraits) to look at only, and how many listen
 //   and wait, read as it opens and every PREVIEW_MS while it stays open; a chat gone closes it, saying so. Join as
 //   listener (the amber one) or Ask to speak (Join as speaker on an open stage), which asks once the chat's snapshot is here: on an open stage the
-//   invite that answers it goes straight on to Join Voice (the visitor's own press), the invite card showing only if that
+//   invite that answers it goes straight on to Join voice (the visitor's own press), the invite card showing only if that
 //   could not start; Start a chat for a GitHub account, one dialog (`startDialog`): a title
 //   prefilled "<name>'s chat", three picture cards for the land, Voice only first (`startZone()` chosen first), Start chat and Cancel, with
 //   the server's refusal in words; from inside a chat (`browsing`), that chat leads the list in purple, "You're in this
@@ -34,11 +34,11 @@
 // - in a chat: Back to chats (to the list, the chat playing on: `browse`) and its title; for a host or co-host the Requests bell, in the panel's title right of the
 //   zone tag, and its pop-up: the queue, then who was removed with Allow back (`allow`, the server's `removed` list); the footer's
 //   Request to speak (Requested · Cancel; `speakNow`, the island's, reads Speak now on an open stage) where a listener
-//   read Join Voice, End chat for its host, Leave chat for everyone (Sign out waits in the other tabs while in a chat); Unmute only for a
+//   read Join voice, End chat for its host, Leave chat for everyone (Sign out waits in the other tabs while in a chat); Unmute only for a
 //   speaker or one who may speak; the Requests bell without a badge while none wait; an Open stage tag beside the title, and in the Requests
 //   pop-up the host's switch for it (`open`);
-//   the invite card, focused as it opens, Start speaking being Join Voice inside its press; the co-host offer card
-//   (Accept, then Join Voice off stage; Not now), again when a co-host left the stage; and a tile's menu, opened by
+//   the invite card, focused as it opens, Start speaking being Join voice inside its press; the co-host offer card
+//   (Accept, then Join voice off stage; Not now), again when a co-host left the stage; and a tile's menu, opened by
 //   a press on its portrait or Enter or Space on the focused tile, offering what the viewer's rank allows over that
 //   participant (`actionsFor`);
 // - one polite live region (`.hc-chat-notice`, or the page's toast) for every notice and refused request, in words
@@ -182,7 +182,7 @@
   })[n.kind]?.() || "";
   const REFUSED = { cooldown: (s) => `You can ask again in ${s || 60} s`, rate_limited: (s) => s ? `Wait ${s} s, then try again` : "Wait a moment, then try again",
     queue_full: () => "Too many people are asking. Try again soon.", cohosts_full: () => SLOTS_FULL, not_offered: () => "That invitation has gone", not_asked: () => "That request is gone",
-    not_speaking: () => "They aren't speaking now", already_allowed: () => "You may speak already: Join Voice", ended: () => "The chat ended",
+    not_speaking: () => "They aren't speaking now", already_allowed: () => "You may speak already: Join voice", ended: () => "The chat ended",
     not_host: () => "Only a host can do that", not_allowed: () => "You can't do that here", not_removed: () => "They can join already" };
   const STARTS = { bad_title: () => "Give it a title of 1–60 characters.", zone_unavailable: () => "That place isn't open for chats.",
     already_hosting: () => "You're hosting a chat already.", rate_limited: (s) => `You started one a moment ago. Try again in ${s || 300} s.`,
@@ -581,9 +581,9 @@
     notNow.addEventListener("click", () => send("decline"), { signal });
     invite.addEventListener("keydown", (event) => { if (event.key === "Escape") { event.preventDefault(); send("decline"); } }, { signal });
     // The co-host offer card, while the visitor holds an offer (`you.request` "cohost"), on stage or not; `again` when it
-    // came back as they left the stage. Accept makes them a co-host and, off stage, goes straight on to Join Voice once the
+    // came back as they left the stage. Accept makes them a co-host and, off stage, goes straight on to Join voice once the
     // server says they may (`autoSpeak`, as an open stage's invite does); a microphone that fails leaves them co-host,
-    // and Join Voice asks again. Not now frees the slot.
+    // and Join voice asks again. Not now frees the slot.
     const offerHead = make("strong", ""), offerNote = make("span", "hc-invite-note"), accept = button("foot-button foot-primary", "Accept"), offerNotNow = button("foot-button", "Not now");
     offerHead.id = "hc-offer-head";
     const offer = make("div", "slab hc-invite hc-offer", offerHead, offerNote, make("span", "hc-invite-go", accept, offerNotNow));
@@ -828,7 +828,7 @@
     const paint = () => {
       const r = room, you = r?.you || {}, speaker = state.voice.role === "speaker" || state.voice.busy;
       const may = you.speak === "eligible" || you.speak === "pending" || you.speak === "active" || !!state.voice.elsewhere;
-      // The host stays on the stage while hosting (Mute instead of Leave Voice): a host and co-hosts always count as
+      // The host stays on the stage while hosting (Mute instead of Leave voice): a host and co-hosts always count as
       // speakers, and handing the chat over or ending it is how a host steps down.
       const hosting = you.rank === "host";
       if (r || !pageVoice) {

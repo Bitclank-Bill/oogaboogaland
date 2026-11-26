@@ -626,7 +626,7 @@ test("the preview: a chat's stage and counts, before joining; an open stage invi
 
 
 
-test("leave is asked again after the waits; a ban that can't be read refuses; Leave Voice gives the stage up; leaving drops a request; an ended chat keeps nothing", async () => {
+test("leave is asked again after the waits; a ban that can't be read refuses; Leave voice gives the stage up; leaving drops a request; an ended chat keeps nothing", async () => {
   now += START_GAP_MS;
   const w = await world();
   Object.assign(w.env, { REALTIME_APP_ID: "app", REALTIME_SECRET: "secret" });
@@ -645,14 +645,14 @@ test("leave is asked again after the waits; a ban that can't be read refuses; Le
   const refused = await ask(cyd, { type: "setRole", role: "speaker" });
   assert.deepEqual([refused.error.code, refused.error.retryable], ["capability_unavailable", true]);
   delete a.env.DB;
-  // Leave Voice (publish/close) gives the place on the stage up.
+  // Leave voice (publish/close) gives the place on the stage up.
   assert.equal((await ask(cyd, { type: "setRole", role: "speaker" })).ok, true);
   assert.equal(a.roles.mayLease("gh:3", now), true);
   const res = await a.mediaRequest("publish/close", new Request("https://audience.invalid/media/publish/close", { method: "POST",
     headers: { "x-audience-principal": JSON.stringify(who(3)) }, body: JSON.stringify({ connection: cyd.connId }) }));
   assert.equal(res.status, 200);
   assert.equal(new Map(a.roles.save().stage).has("gh:3"), false, "going back to listening on their own word gives the place up");
-  assert.equal(a.roles.mayLease("gh:3", now), true, "but, once let on, they come back with Join Voice and no approval");
+  assert.equal(a.roles.mayLease("gh:3", now), true, "but, once let on, they come back with Join voice and no approval");
   // A listener who leaves takes their request with them.
   await ask(dot, { type: "ask" });
   assert.deepEqual(a.roles.queue().map((q) => q.id), ["gh:4"]);
@@ -858,7 +858,7 @@ test("a chat with no land: Ooga Chat voice alone, its roster in the main zone's 
 
 
 
-test("a co-host offer through the chat: the person hears it, accepting puts them on stage, Leave Voice brings the offer back", async () => {
+test("a co-host offer through the chat: the person hears it, accepting puts them on stage, Leave voice brings the offer back", async () => {
   now += START_GAP_MS;
   const w = await world();
   Object.assign(w.env, { REALTIME_APP_ID: "app", REALTIME_SECRET: "secret" });
@@ -876,7 +876,7 @@ test("a co-host offer through the chat: the person hears it, accepting puts them
   await a.mediaRequest("publish/close", new Request("https://audience.invalid/media/publish/close", { method: "POST",
     headers: { "x-audience-principal": JSON.stringify(who(3)) }, body: JSON.stringify({ connection: cyd.connId }) }));
   await w.settle();
-  assert.deepEqual([you(cyd).rank, you(cyd).request], ["", "cohost"], "Leave Voice: a listener with the offer back");
+  assert.deepEqual([you(cyd).rank, you(cyd).request], ["", "cohost"], "Leave voice: a listener with the offer back");
   assert.ok(notices(cyd, "cohost_offer").at(-1).again, "and told so");
   await ask(amy, { type: "cohost", id: "gh:3", on: false });
   assert.equal(notices(cyd, "cohost_retracted").length, 1, "the host withdraws it");
@@ -915,7 +915,7 @@ test("a short drop shows nobody anything: the speaker's tile stands, their place
   assert.equal(rowOf(amy, "gh:2").since, since, "where they stood in the order");
   await w.settle();
   assert.equal(await ctx.storage.get("quiet"), undefined, "and the hold it ended is gone from storage, so a wake can't bring it back");
-  // A drop that lasts: the roster says so once the quiet hold passes, and Join Voice still needs no approval.
+  // A drop that lasts: the roster says so once the quiet hold passes, and Join voice still needs no approval.
   const left = now;
   await a.webSocketClose(back.ws);
   await w.settle();
@@ -944,7 +944,7 @@ test("a short drop shows nobody anything: the speaker's tile stands, their place
   assert.equal(you(later).speak, "none", "Request to speak again");
 });
 
-test("a microphone publishing again keeps a co-host's rank and tile; Leave Voice gives them up for the offer card", async () => {
+test("a microphone publishing again keeps a co-host's rank and tile; Leave voice gives them up for the offer card", async () => {
   now += START_GAP_MS;
   const w = await world();
   Object.assign(w.env, { REALTIME_APP_ID: "app", REALTIME_SECRET: "secret" });
@@ -973,7 +973,7 @@ test("a microphone publishing again keeps a co-host's rank and tile; Leave Voice
   await speakerOn(w, chat.id, bea);
   assert.equal((await close({})).status, 200);
   assert.equal(a.roles.rankOf("gh:2"), "");
-  assert.equal(notices(bea, "cohost_offer").at(-1).again, true, "Leave Voice: a listener with the offer back");
+  assert.equal(notices(bea, "cohost_offer").at(-1).again, true, "Leave voice: a listener with the offer back");
 });
 
 test("a host signed out everywhere starts the hold, and the alarm is set for it", async () => {

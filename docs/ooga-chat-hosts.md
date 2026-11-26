@@ -30,12 +30,12 @@ voice: nothing said on it is heard in OC, and nothing said in a chat is heard on
 |---|---|---|
 | Host | the contributor who started the chat; one a chat | everything a co-host may, plus make and remove co-hosts, hand the chat over to a co-host, end the chat |
 | Co-host | up to 3, made by the host from the chat's speakers or listeners | approve and decline requests, invite a listener, mute a speaker, move a speaker to listening, remove a listener or speaker from the chat; never touch the host or another co-host, never end the chat |
-| Speaker | approved by a host or co-host, and remembered for the chat (below) | speak, mute and unmute themselves, raise the hand, go back to listening and return with Join Voice |
+| Speaker | approved by a host or co-host, and remembered for the chat (below) | speak, mute and unmute themselves, raise the hand, go back to listening and return with Join voice |
 | Listener | anyone signed in who joined (GitHub or X) | listen, react, request to speak |
 
 - **The host is on stage from the start**, muted, as in X Spaces: Start chat opens their microphone on the strength of
-  that press (refused, they stay host with no microphone, and Join Voice asks again). A co-host joins the stage only by
-  pressing Join Voice. A host's tile is labelled **Host** and a co-host's **Co-host** in place of Speaker or Listener,
+  that press (refused, they stay host with no microphone, and Join voice asks again). A co-host joins the stage only by
+  pressing Join voice. A host's tile is labelled **Host** and a co-host's **Co-host** in place of Speaker or Listener,
   with no separate badge; the microphone mark still shows whether one on stage is speaking or muted.
 - **Co-hosting is offered.** Make co-host sends the person an offer, which holds one of the three slots (co-hosts and
   open offers together; the host cannot offer more while all three are held). Accepting makes them a co-host and puts
@@ -55,7 +55,7 @@ voice: nothing said on it is heard in OC, and nothing said in a chat is heard on
   the same role, and one account holds one voice lease across every chat (joining another chat's stage leaves the
   first's).
 - **Once approved, remembered.** Anyone a host or co-host let on the stage (an approved request, an invite, an open
-  stage, co-hosting) may take it again with Join Voice for the rest of the chat, after going back to listening or a drop
+  stage, co-hosting) may take it again with Join voice for the rest of the chat, after going back to listening or a drop
   of any length, with no new approval. Only **Move to listener** or **Remove from chat** takes that away: then they
   request again (`cleared` in chat-roles.js; the speaker cap still holds).
 - **A short drop shows nobody anything.** When a speaker's, co-host's or host's last connection to the chat drops,
@@ -65,7 +65,7 @@ voice: nothing said on it is heard in OC, and nothing said in a chat is heard on
   to listener or removes them. Their place counts against the speaker cap all the while, so the stage never reshuffles.
   Back and speaking again (Ooga Chat does it by itself), their tile carries on where it stood; still gone when the hold
   ends, the roster shows them gone. A microphone that only publishes again after a failed connection (`publish/close`
-  with `recover`) keeps the place, rank and tile the same way; Leave Voice is the speaker's own word and gives the place
+  with `recover`) keeps the place, rank and tile the same way; Leave voice is the speaker's own word and gives the place
   (and a co-host's rank) up.
 - **Mute:** a host or co-host can mute a speaker; only the speaker can unmute themselves (X Spaces' rule). Move to
   listener ends their lease. Remove from chat closes every connection of that account to the chat and keeps it out of
@@ -74,7 +74,7 @@ voice: nothing said on it is heard in OC, and nothing said in a chat is heard on
 
 ## Requests
 
-- A listener's footer reads **Request to speak** where it read Join Voice; pressed, it reads **Requested · Cancel**.
+- A listener's footer reads **Request to speak** where it read Join voice; pressed, it reads **Requested · Cancel**.
   A requester's tile carries a small microphone badge. The raised hand keeps its meaning for speakers only.
 - The host and co-hosts see a **Requests** bell with its count in the chat's bar; it drops the queue from the bar over
   the top of the live view (never pushing the view or the roster, and scrolling itself past what the panel has room
@@ -305,7 +305,7 @@ Everything audience protocol 1 has (docs/ooga-chat-app.md), with these differenc
   speaker: `role` is still `speaker` only under an active lease.
 - **You** adds `rank` (`host`, `cohost` or `""`), `request` (`asked`, `invited` or `""`) and, while invited,
   `inviteUntil` (ms). `speak` is `eligible` exactly when the visitor may take a lease now (a rank, a live invite, or a
-  place on the stage), so the app's Join Voice flow is unchanged: Start speaking on the invite card is Join Voice.
+  place on the stage), so the app's Join voice flow is unchanged: Start speaking on the invite card is Join voice.
 - **Requests**, each `{ type, requestId, ... }` answered by `{ type: "result", requestId, ok, error?: { code,
   retryable, retryAfter? }, you }`:
 

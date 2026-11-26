@@ -346,7 +346,7 @@ html.iv-full .hc-room-strip { display: none; }
    meeting with no gap, at every width: the island's panel here, Ooga Chat's in ooga-chat.css (8px on a phone). */
 .panel[data-space="on"] > :is(.hc-room-strip, .cloud-roster) { margin-right: -14px; margin-left: -14px; border-right-width: 0; border-left-width: 0; border-radius: 0; }
 .panel[data-space="on"] > .hc-room-strip .iv-stage { border-right-width: 0; border-left-width: 0; border-radius: 0; }
-/* In a chat on a narrow screen the footer is one row: the buttons, each as wide as its words (Unmute, Join Voice,
+/* In a chat on a narrow screen the footer is one row: the buttons, each as wide as its words (Unmute, Join voice,
    Request to speak, End chat), then the links (Leave chat); any note a button carries goes under them. */
 @media (max-width: 479px) {
   .panel[data-space="on"] .cloud-foot { flex-wrap: wrap; gap: 6px 8px; }

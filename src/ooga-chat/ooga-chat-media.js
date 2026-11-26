@@ -11,12 +11,12 @@
 // `blocked`, and the next tap or key anywhere on the page plays them all. A receiver that fails is opened again with
 // backoff (1 s to 30 s, RECEIVE_TRIES), then reads `failed` until `retry`.
 //
-// Speaking. Join Voice (`join`, from the click) asks for the microphone first, inside the gesture, and turns its track
+// Speaking. Join voice (`join`, from the click) asks for the microphone first, inside the gesture, and turns its track
 // off before anything can carry it, so it starts muted; only then asks the audience for a speaker lease (`setRole`,
 // answered over the feed with the lease's generation in `you.lease`), publishes the one microphone track
 // (`publish/open`, `publish/offer`, `publish/ready`) and becomes a speaker only on the server's acknowledgement. A
 // refusal, a denied or missing microphone, or a failed connection returns to listening with nothing held and says why
-// (`notice`). `mute` flips the track and tells the server (`setMic`). Leave Voice (`leave`) stops and releases the
+// (`notice`). `mute` flips the track and tells the server (`setMic`). Leave voice (`leave`) stops and releases the
 // microphone before telling the server (`publish/close`), and keeps listening. The server ending the lease (a `you` that
 // no longer says pending or active: an expiry, a revocation, the island taking the identity) stops capture at once.
 // Another zone (`zone`) ends speaking there and drops every voice of the old zone before the new zone's snapshot.
@@ -56,7 +56,7 @@
 // talking, elsewhere, localVersion, muteDuels }`; `localVersion` changes with local listening choices. `duel(msg)` takes
 // the Commons' pair-only snapshot/start/end or loss; `setMuteDuels(on)` is the account's opt-in, independent of manual
 // mute/volume, and `mutedByDuel(id)` explains an automatic mute. `elsewhere` says the account's voice is on another device (the island's, or another Ooga Chat
-// page's): Join Voice then needs the visitor's word, `join({ takeover: true })`, which moves it here. Speaking is this page's own meter on the captured microphone (as the island's voice.js meters it, the same
+// page's): Join voice then needs the visitor's word, `join({ takeover: true })`, which moves it here. Speaking is this page's own meter on the captured microphone (as the island's voice.js meters it, the same
 // levels): true while an unmuted speaker's voice is loud enough, whoever else is listening, so the visitor sees it work
 // alone. `talking` is the participants whose voices this page hears speaking now, from a meter on each voice it plays
 // (as the island's Online Oogas reads its own), a frozen list replaced only when someone starts or stops.
@@ -92,12 +92,12 @@
     inuse: "The microphone is in use by another app.",
     refused: "Speaking isn't open to this account right now.",
     unchecked: "Contributions can't be checked right now. Try again soon.",
-    island: "Your voice is on another device. Join Voice to move it here.",
+    island: "Your voice is on another device. Join voice to move it here.",
     full: "Every speaking spot here is taken. Try again soon.",
     busy: "Too many tries. Wait a moment, then try again.",
     failed: "Voice couldn't connect. Try again.",
-    ended: "Your speaking ended. Join Voice to speak again.",
-    reconnected: "Voice reconnected. Join Voice to speak again.",
+    ended: "Your speaking ended. Join voice to speak again.",
+    reconnected: "Voice reconnected. Join voice to speak again.",
     mic: "Your microphone stopped.",
     resumed: "Voice reconnected. You're muted.",
     reopened: "Voice reconnected. Your microphone is on.",
