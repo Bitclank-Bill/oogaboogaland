@@ -513,8 +513,12 @@ As built (`src/js/island-view.js`, drawn by the shared views, chat-hosts.js, in 
   (`OPT_IN`, never prefetched). It does not pose a weapon as the island's crew does (no slung weapons, aiming, recoil
   or reloads), walk the pet at its heel or fly it, or light the jetpack's flame; a walker's gait is its own simple swing
   (the crew's `poseGait` needs crew.js), a seated speaker is not dressed (the chat's `looks` are the walkers'), and the
-  banana pile stands as baked (Ooga Chat does not follow the pile's level, and pile.js needs the island's terrain). The faces stand over their heads on the
-  2D canvas above it. While it loads the stage stays black with a turning ring in its middle (`data-wait`): nothing of
+  banana pile stands as baked (Ooga Chat does not follow the pile's level, and pile.js needs the island's terrain). Over each speaker's head, on the
+  2D canvas above it, stands their name as the island draws other players' (remote-players.js `drawNames`): bold mono
+  with a dark edge, a dot before it (green walking the chat's island, purple on a cloud) and the voice mark after it
+  (red muted, green speaking), a plate that would cover another moved above it. The plates follow the view's size, full
+  size from a view of about 600 by 600 pixels up and down to half that on the smallest strip, the dot and the voice mark
+  with the name; the flat map keeps their faces. While it loads the stage stays black with a turning ring in its middle (`data-wait`): nothing of
   the map or a bare canvas shows first; the map shows only where the 3D view can't load. A drag turns the island, a two-finger, right or Shift drag pans it, the wheel or a pinch zooms, held to the
   island and above the sea, and Reset view puts it back. `scripts/island-scene.mjs` (after `npm run build`) bakes the
   scenery from the built hub in copy mode: every node still drawn but pictures, glass, clipped and projected surfaces,

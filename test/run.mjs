@@ -18309,7 +18309,8 @@ const oogaChatAppChecks = async () => {
       Object.values(hostedOk).every((w) => Object.values(w).every(Boolean)), JSON.stringify({ hostedOk, hostedRuns }));
 
     // The island view (island-view.js; docs/ooga-chat-hosts.md, "The island view"), at 1024 and 390: Sample Oak's chat
-    // has two speakers walking its island, each face ringed in green over its walker; the chat's places come only while
+    // has two speakers walking its island, each marked in green over its walker (a face ringed on the map, a nameplate's
+    // dot in 3D); the chat's places come only while
     // the strip can be seen (another tab stops them, coming back starts them again); leaving the chat takes the strip
     // away. One view, chosen by the device: at 1024 (WebGL2, memory to spare) the 3D view over the baked scenery comes by
     // itself, a wheel zooms it, Reset view puts it back, and Full screen lays it over the page with the app's column

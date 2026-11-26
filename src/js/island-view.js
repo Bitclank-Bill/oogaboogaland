@@ -4,8 +4,9 @@
 // page by the device (`capable`), never toggled: the flat bird's-eye picture (scripts/island-view.mjs, its matrix
 // island-view-data.js) with each walker's Ooga face, or where the page offers it (`loadLive`, Ooga Chat's) to a viewer
 // it allows (`liveAllowed`: Ooga Chat's, a GitHub contributor; asked again on every update) and the device can carry it (WebGL2, enough memory and cores, no data saver or connection it reports as slow), the 3D view (island-view-live.js) over the
-// baked scenery at the tier the viewer's connection allows (island-scene.js), the picture showing while it loads and
-// staying if it can't, the speakers not walking it sitting on the copy's clouds (`clouds`). In 3D the viewer turns the
+// baked scenery at the tier the viewer's connection allows (island-scene.js), dark with a loading ring while it loads
+// and the picture if it can't, the speakers not walking it sitting on the copy's clouds (`clouds`), and over each
+// speaker's head their name as the island shows other players' (a green dot walking, a purple one on a cloud). In 3D the viewer turns the
 // island with a drag, pans with a two-finger drag, a right or Shift drag, zooms with the wheel or a pinch, and Reset
 // view puts it back. It draws only while shown and active: the map when something changed (a walker, the size), the 3D
 // view as its tier's `tick` says too (every frame on the full tier, its sky, clouds, wind and fires alive), each at the
@@ -27,6 +28,13 @@
   "use strict";
   const BL = window.BL = window.BL || {};
   const MAX = 32, FACE = 26, RING = "#22c55e", PULSE_HZ = 2.2;
+  // The 3D view's nameplates, as the island draws other players' (remote-players.js `drawNames`): the name in bold mono
+  // with a dark edge, the dot before it (green walking the chat's island, purple on a cloud) and the voice mark after it.
+  const NAME_SIZE = 13, NAME_LINE = NAME_SIZE * 1.3, NAME_SPACING = "0.39px", NAME_PAD_X = 5, NAME_PAD_Y = 3, NAME_BOTTOM = 2;
+  const DOT_D = 8, DOT_GAP = 6, ICON_GAP = 4, PLATE_EDGE = 4, CLOUD_DOT = "#b18aff", PLATE_REF = 600, PLATE_MIN = 0.5;
+  const NAME_STROKE = "rgba(20, 14, 8, 0.85)", NAME_FILL = "#f3efe4", ICON_IDLE = "#a6a6a2", ICON_SPEAKING = "#22c55e", ICON_MUTED = "#e5533d";
+  // x, y, w, h runs on the voice mark's 9x9 grid, as the roster's draws it.
+  const SPEAKER = [0, 3, 2, 3, 2, 2, 1, 5, 3, 1, 1, 7], WAVES = [5, 3, 1, 3, 7, 2, 1, 5], CROSS = [5, 3, 1, 1, 7, 3, 1, 1, 6, 4, 1, 1, 5, 5, 1, 1, 7, 5, 1, 1];
   // Where a world point falls on the picture: `view` is island-view-data.js's (`w`, `h`, `matrix`), `out` gets `x`, `y`.
   const project = (view, x, y, z, out) => {
     const m = view.matrix, w = m[3] * x + m[7] * y + m[11] * z + m[15];
@@ -191,6 +199,78 @@
     image.addEventListener("load", () => { backFor = ""; paintBack(); paint(); changed(); });
     // A face a walker, made when their row first comes (or their picture changes): the picture and its initial.
     const faces = new Map();
+    // A nameplate a speaker for the 3D view (`{ text, w, talking, muted }`, `w` measured once a name).
+    const plates = new Map();
+    let plateFont = "", plateBase = 0, plateN = 0;
+    // The boxes laid out this frame (left, top, right, bottom), so a plate over another moves above it, or under it at
+    // the top edge, as remote-players.js `stack` lays the island's.
+    const platesAt = new Float64Array((MAX * 2) * 4);
+    const stackPlate = (left, top, boxW, boxH) => {
+      for (let again = true, tries = 0, down = false; again && tries < 8; tries++) {
+        again = false;
+        for (let i = 0; i < plateN; i++) {
+          const o = i * 4;
+          if (!(left < platesAt[o + 2] && left + boxW > platesAt[o] && top < platesAt[o + 3] && top + boxH > platesAt[o + 1])) continue;
+          if (!down && platesAt[o + 1] - boxH - 2 < PLATE_EDGE) down = true;
+          top = Math.round(down ? platesAt[o + 3] + 2 : platesAt[o + 1] - boxH - 2);
+          again = true;
+        }
+      }
+      top = Math.max(PLATE_EDGE, Math.min(Math.max(PLATE_EDGE, height - boxH - PLATE_EDGE), top));
+      if (plateN < MAX * 2) { const o = plateN++ * 4; platesAt[o] = left; platesAt[o + 1] = top; platesAt[o + 2] = left + boxW; platesAt[o + 3] = top + boxH; }
+      return top;
+    };
+    const runs = (cells, x, y, k) => { for (let i = 0; i < cells.length; i += 4) g.fillRect(x + cells[i] * k, y + cells[i + 1] * k, cells[i + 2] * k, cells[i + 3] * k); };
+    // The plates' size follows the view's (`PLATE_REF`, the square root of its area at which they stand full size, never
+    // larger), down to half that on the smallest strip: the name, its dot, the gaps and the voice mark all alike.
+    // `plateK` is that share, in steps of a twentieth so the font is made again only when it moves.
+    let plateK = 0, mono = "", fontAt = "", spacingAt = "";
+    // One plate standing on a head's top (x its middle, `top` its highest point, CSS pixels), kept inside the canvas.
+    const drawPlate = (p, x, top, dot) => {
+      // A name is measured once, at full size (measureText allocates), and drawn at the view's share of it.
+      if (p.w < 0) {
+        g.font = plateFont; g.letterSpacing = NAME_SPACING;
+        p.w = g.measureText(p.text).width;
+        g.font = fontAt; g.letterSpacing = spacingAt;
+      }
+      const k = plateK, w = p.w * k, padX = NAME_PAD_X * k, padY = NAME_PAD_Y * k, line = NAME_LINE * k, dotD = DOT_D * k;
+      const boxW = Math.round(padX * 2 + dotD + DOT_GAP * k + w), boxH = Math.round(padY * 2 + line);
+      const left = Math.round(Math.max(PLATE_EDGE, Math.min(width - boxW - PLATE_EDGE, x - boxW / 2)));
+      const row = stackPlate(left, Math.round(Math.max(PLATE_EDGE, top - NAME_BOTTOM * k - boxH)), boxW, boxH) + padY, mid = row + line / 2;
+      const textX = left + padX + dotD + DOT_GAP * k;
+      g.strokeStyle = NAME_STROKE; g.fillStyle = NAME_FILL; g.lineWidth = 3 * k;
+      g.strokeText(p.text, textX, row + plateBase * k);
+      g.fillText(p.text, textX, row + plateBase * k);
+      p.dotX = left + padX + dotD / 2; p.dotY = mid;
+      g.beginPath(); g.arc(p.dotX, mid, dotD / 2, 0, Math.PI * 2);
+      g.lineWidth = 1.5 * k; g.stroke(); g.fillStyle = dot; g.fill();
+      const ix = textX + w + ICON_GAP * k, iy = mid - 4.5 * k;
+      g.fillStyle = p.muted ? ICON_MUTED : p.talking ? ICON_SPEAKING : ICON_IDLE;
+      runs(SPEAKER, ix, iy, k);
+      runs(p.muted ? CROSS : WAVES, ix, iy, k);
+    };
+    const drawPlates = () => {
+      if (!mono) {
+        mono = getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "ui-monospace, monospace";
+        plateFont = `bold ${NAME_SIZE}px ${mono}`;
+        g.font = plateFont;
+        const m = g.measureText("Mg");
+        plateBase = (NAME_LINE - m.fontBoundingBoxAscent - m.fontBoundingBoxDescent) / 2 + m.fontBoundingBoxAscent;
+      }
+      const k = Math.round(Math.max(PLATE_MIN, Math.min(1, Math.sqrt(width * height) / PLATE_REF)) * 20) / 20;
+      if (k !== plateK) { plateK = k; fontAt = `bold ${NAME_SIZE * k}px ${mono}`; spacingAt = `${Math.round(39 * k) / 100}px`; }
+      plateN = 0;
+      g.font = fontAt; g.letterSpacing = spacingAt; g.textAlign = "left"; g.textBaseline = "alphabetic"; g.lineJoin = "round";
+      for (let i = 0; i < live.perches; i++) {
+        const id = live.perchHead(i, P), p = id && plates.get(id);
+        if (p) drawPlate(p, P.x, P.y, CLOUD_DOT);
+      }
+      for (let i = 0; i < MAX; i++) {
+        const id = state.ids[i], p = id !== null && plates.get(id);
+        if (p && live.walkerHead(i, P)) drawPlate(p, P.x, P.y, RING);
+      }
+      g.letterSpacing = "0px";
+    };
     // Each walker's Ooga for the 3D view: the character the chat names for them, else their login (hashed, as the island does).
     const names = new Map();
     // And how each looks, as the chat last said (`looks`): an entry a walker, kept whole until the next frame.
@@ -270,20 +350,16 @@
         if (image.complete && image.naturalWidth) g.drawImage(image, offX, offY, view.w * fit, view.h * fit);
       }
       const r = Math.max(9, Math.min(FACE, width / 22)) / 2, beat = 0.5 + 0.5 * Math.sin(now / 1000 * Math.PI * 2 * PULSE_HZ);
-      for (let i = 0; i < MAX; i++) {
+      // Over the 3D view each speaker's name stands over their Ooga's head; the map carries their faces.
+      if (live) drawPlates();
+      else for (let i = 0; i < MAX; i++) {
         const id = state.ids[i];
         if (id === null) continue;
         const f = faces.get(id);
         if (!f) continue;
         placeOf(state, i, now, NOW);
-        let x, y;
-        if (live) {
-          if (!live.project(NOW.x, NOW.y + 2.1, NOW.z, P)) continue;
-          x = P.x; y = P.y - r;
-        } else {
-          project(view, NOW.x, NOW.y, NOW.z, P);
-          x = offX + P.x * fit; y = offY + P.y * fit;
-        }
+        project(view, NOW.x, NOW.y, NOW.z, P);
+        const x = offX + P.x * fit, y = offY + P.y * fit;
         if (f.talking) {
           g.globalAlpha = 0.25 + 0.5 * beat;
           g.fillStyle = RING;
@@ -515,6 +591,17 @@
         const f = faceFor(row);
         f.talking = row.id === next.self ? !!next.speaking : next.talking.includes(row.id);
       }
+      for (const row of rows) {
+        if (row.role !== "speaker") continue;
+        const text = row.display || row.login || "";
+        let p = plates.get(row.id);
+        if (!p) plates.set(row.id, p = { text: "", w: -1, talking: false, muted: false, seen: 0, dotX: NaN, dotY: NaN });
+        if (p.text !== text) { p.text = text; p.w = -1; }
+        p.talking = row.id === next.self ? !!next.speaking : next.talking.includes(row.id);
+        p.muted = !!row.muted;
+        p.seen = rows;
+      }
+      for (const [id, p] of plates) if (p.seen !== rows) plates.delete(id);
       if (faces.size > walkers.length) for (const id of faces.keys()) if (!walkers.some((row) => row.id === id)) { faces.delete(id); names.delete(id); }
       if (show && !pictureAsked) { pictureAsked = true; image.src = picture; }
       const was = shown;
@@ -557,13 +644,15 @@
       changed();
       return true;
     };
-    // Where each walker's face stands on the strip now, in CSS pixels (the checks', made on call).
+    // Where each walker's face stands on the strip now (in 3D, their nameplate's dot), in CSS pixels (the checks', made
+    // on call).
     const placed = () => {
       const now = performance.now(), out = [];
       for (let i = 0; i < MAX; i++) {
         if (state.ids[i] === null) continue;
         placeOf(state, i, now, NOW);
-        if (live) { if (live.project(NOW.x, NOW.y + 2.1, NOW.z, P)) out.push({ id: state.ids[i], x: P.x, y: P.y, world: { ...NOW } }); continue; }
+        // Over the 3D view, where the walker's nameplate put its dot when last drawn.
+        if (live) { const p = plates.get(state.ids[i]); if (p && p.dotX === p.dotX) out.push({ id: state.ids[i], x: p.dotX, y: p.dotY, world: { ...NOW } }); continue; }
         project(view, NOW.x, NOW.y, NOW.z, P);
         out.push({ id: state.ids[i], x: offX + P.x * fit, y: offY + P.y * fit, world: { ...NOW } });
       }
@@ -571,7 +660,7 @@
     };
     const self = { node, stage, fold, update, walk, looks, clouds, placed, get folded() { return folded; }, get perched() { return perched; },
       dispose() {
-        setFull(false); shown = active = false; stop(); endLive(); sizes?.disconnect(); faces.clear();
+        setFull(false); shown = active = false; stop(); endLive(); sizes?.disconnect(); faces.clear(); plates.clear();
         document.removeEventListener("fullscreenchange", onFullChange); document.removeEventListener("keydown", onKey);
         node.remove(); open.delete(self);
       },
