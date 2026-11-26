@@ -116,7 +116,7 @@ at any time. When a chat ends, everyone in it sees **The chat ended**, its voice
 
 ## Where each control lives
 
-**OC** (`src/ooga-chat/`): the Ooga Chat tab opens on the **Chats** list (title, zone tag, the host's portrait, how
+**OC** (`src/ooga-chat/`): the Ooga Chat tab opens on the **Chats** list (title, zone tag in the row's top right corner, short as every chat's land tag is: Main, DSB or Voice, its whole name its `title`, a title too long for the room left ending in "…", the host's portrait, how
 many speak and listen), with **Start a chat** for a contributor: one dialog with a title (prefilled "<name>'s chat",
 editable, at most 60 characters, checked by the island's chat policy) and three picture cards to choose the land: **Voice
 only** first (chosen first in Ooga Chat), Main Island and DSB Land. Voice only is a chat with no land (zone `none`: Ooga Chat voice alone, never a
@@ -126,14 +126,22 @@ the footer) with a Back to chats control, the Requests chip for a host or co-hos
 to the right of the zone tag), a role badge on host and co-host
 tiles, and the footer's Request to speak or, for a host, End chat beside Leave chat.
 
+**Back to chats keeps the chat.** It shows the list over the chat, which goes on playing, its voice and the visitor's
+place in it untouched: the chat leads the list in green, "You're in this chat · hosting / co-hosting / speaking /
+listening", and pressing it goes back in. Another chat pressed meanwhile opens its preview with a line saying what
+joining does to the one the visitor is in, by their role there: a listener leaves it, a speaker leaves its stage, a
+co-host stops co-hosting; Join as listener or Ask to speak leaves it and joins, Stay changes nothing. Its host instead
+gets "Make <name> host and join" for each co-host (one reconnecting dimmed) and "End <title> and join", and no way in
+without stepping down. Only Leave chat, End chat or choosing another chat leaves one.
+
 A host steps down only by handing the chat over or ending it. While hosting they stay on the stage (Mute, no Leave
 Voice, in the chat's footer and in Ooga Chat's account rows alike), and the island's own Join voice, which otherwise
-leaves a chat for the island's voice, only says so in a toast. Leave chat, and Back to chats, open **Choose who hosts
+leaves a chat for the island's voice, only says so in a toast. Leave chat opens **Choose who hosts
 the chat after you leave**: one button a co-host, "Make <name> host and leave", connected co-hosts first, the
 longest-serving of them amber, and Cancel; the chat is handed over (`handover`) and only then left. A co-host whose
 connection dropped stays listed but dimmed, "Reconnecting…" under it, since handed the chat they would leave it with no
 host there; the picker follows them as they drop or come back, and with every co-host reconnecting it says to wait for
-them or end the chat. With no co-host neither Leave chat nor Back to chats shows, and End chat is the way out. A host's dropped connection
+them or end the chat. With no co-host Leave chat does not show, and End chat is the way out. A host's dropped connection
 still waits two minutes and passes to a co-host, as below.
 
 **OBL** (`src/js/cloud-panel.js`): the same Chats list and chat view in the sheet's cloud tab, through the same shared
