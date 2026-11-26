@@ -1,8 +1,12 @@
 // The code a staged Ooga Chat fetches only once a tab needs it, as the island's deferred.js does for its scenes:
 // `bananas` (the Bananas tab and Feed the Oogas, with donations.js), `panels` (Contributing Oogas, Online Oogas and
-// The Commons) and `emoji` (the emoji bar and its picker with the whole emoji list, wanted only signed in). index.html tags their modules `data-defer="<group>"`; scripts/ooga-chat.mjs stages each group as
-// js/ooga-chat-<group>-<hash>.js and names the files here (`BL.oogaChatScripts`, written at the head of the first-load
-// script). From source the modules are on the page already, so `load` finds them present and answers null at once.
+// The Commons), `emoji` (the emoji bar and its picker with the whole emoji list, wanted only signed in), `hosts`
+// (hosted chats, ooga-chat-hosts.js, with the island view) and `live` (the island view's Live view: the game's renderer
+// and the island's ground, fetched only when the visitor turns it on), with what dresses its walkers, each fetched only
+// once one wears it (island-view-live.js): `hats` (the hats' geometry), `wardrobe` (the wardrobe's pieces) and `gear`
+// (the island's props, for a jetpack). index.html tags their modules `data-defer="<group>"`; scripts/ooga-chat.mjs
+// stages each group as js/ooga-chat-<group>-<hash>.js and names the files here (`BL.oogaChatScripts`, written at the
+// head of the first-load script). From source the modules are on the page already, so `load` finds them present and answers null at once.
 // Otherwise it adds one same-origin script (the policy's 'self'), bounded by TIMEOUT_MS; a failure rejects and is
 // forgotten, so the next `load` tries again, under a fresh address after an error. A timeout keeps the address and the
 // script: its copy may still arrive and run, and must not download twice. Whenever a group is found here, by `load`,
@@ -10,13 +14,17 @@
 // (scripts/ooga-chat.mjs), since its group is already here. A deploy replaces the files, so a page left open
 // across one (and not kept by the service worker) finds its chunk gone: an error is probed with a HEAD, and a 404 marks
 // the page `stale`, which the tab's stand-in offers as a reload. `ready(group, fn)` runs fn once the group is present,
-// now or when it arrives; `prefetch` loads every group once the page is idle, never under Save-Data.
+// now or when it arrives; `prefetch` loads every group but those (OPT_IN) once the page is idle, never under Save-Data.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
   const TIMEOUT_MS = 20000;
   // How each group shows it has arrived: the view its last module registers.
-  const PRESENT = { bananas: () => !!BL.oogaChatViews?.bananas, panels: () => !!BL.oogaChatViews?.online, emoji: () => !!BL.reactionBar };
+  const PRESENT = { bananas: () => !!BL.oogaChatViews?.bananas, panels: () => !!BL.oogaChatViews?.online, emoji: () => !!BL.reactionBar,
+    hosts: () => !!BL.oogaChatHosts, live: () => !!BL.islandViewLive, hats: () => !!BL.characterEquipment?.loaded,
+    wardrobe: () => !!BL.equipmentWardrobe?.seeded, gear: () => !!BL.hubModels };
+  // Fetched only on the visitor's word (the 3D view, and a look it shows), never by `prefetch` (scripts/ooga-chat.mjs OPT_IN).
+  const OPT_IN = new Set(["live", "hats", "wardrobe", "gear"]);
   const loading = new Map(), attempts = new Map(), waiting = new Map();
   let stale = false;
   const arrived = (group) => {
@@ -81,7 +89,7 @@
     if (navigator.connection?.saveData) return;
     const idle = window.requestIdleCallback ? (fn) => requestIdleCallback(fn, { timeout: 3000 }) : (fn) => setTimeout(fn, 1500);
     requestAnimationFrame(() => idle(() => {
-      for (const group of Object.keys(PRESENT)) load(group)?.catch(() => {});
+      for (const group of Object.keys(PRESENT)) if (!OPT_IN.has(group)) load(group)?.catch(() => {});
     }));
   };
   BL.oogaChatChunks = { load, ready, prefetch, present: (group) => PRESENT[group](), get stale() { return stale; } };

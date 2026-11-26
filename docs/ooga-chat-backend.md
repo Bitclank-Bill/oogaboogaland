@@ -40,6 +40,7 @@ release (#669).
 |---|---|---|
 | Edge Worker | `ooga-chat-staging` | `ooga-chat-production` |
 | Origin (`SITE_ORIGIN`) | `https://ooga-chat-staging.wickedsmartbitcoin.workers.dev` | `https://ooga.chat` (custom domain; no workers.dev copy) |
+| Island (`ISLAND_ORIGIN`, the bootstrap's `island`, for a chat's Go there) | `https://oogaboogaland-staging.wickedsmartbitcoin.workers.dev` | `https://oogabooga.land` |
 | Config | `wrangler.ooga-chat.staging.jsonc` | `wrangler.ooga-chat.production.jsonc` |
 | D1 | `ooga-chat-staging` (`109e1799-…`, ENAM) | `ooga-chat-production` (`c4a02871-…`, ENAM) |
 | Bridge (`OBL`) | `oogaboogaland-staging#ChatBridge` | `oogaboogaland-production#ChatBridge` |
@@ -384,6 +385,23 @@ snapshot after a reconnect as a confirmation (the review on #677). The two clien
 `app`/`chat`, `face`/`avatar`, `muted`/`mic`). The server sends each client its own shape from one model, and a single
 shape later is welcome.
 
+## Hosted chats
+
+Hosts, co-hosts, speakers and listeners in chats a contributor starts are their own design, in
+[ooga-chat-hosts.md](ooga-chat-hosts.md): the roles and requests, the `ChatDirectory` object (migration `v6`), one
+`Audience` object a chat (`chat:<id>`) speaking audience protocol 2, the island's `/api/chats` routes and the edge's
+`/api/chat/chats`, and the `chats` switch on both sides (`OOGA_CHAT_FEATURES` on the island, `FEATURES` on the edge). A
+chat's socket is this section's audience socket with `?chat=<id>`, its media the media section's with the same, and the
+bridge reaches a chat only while the directory lists it (`x-chat-id`, else 404). Inside a chat, a host's leave replaces
+the contributor rule below for speaking: anyone signed in, X included, may be invited; a GitHub account is still refused
+while banned or while another account holds its login.
+
+A Main Island chat also has its own copy of the zone, where its speakers walk their Oogas: the island's `Room` class
+run as `chat:<id>` (`worker/src/room-copy.js`), reached by the island page through `GET /api/chats/<id>/world` behind
+the island's `copies` switch, with the chat deciding who walks it. Clouds seat the chat's other speakers there, and the
+chat relays the walkers' places to connections that asked for the island view (`walk-v1`). Nothing from a copy reaches
+the real island; Ooga Chat's clients never connect to one.
+
 ## Media (#666)
 
 Ooga Chat's audio goes publisher to SFU to listener on the environment's one Realtime SFU app, the island's own, so a
@@ -646,8 +664,9 @@ NPC frame, SFU id, private-conversation frame, reaction over a body, other game 
 }` (its own asks by account id, and those asked back), and every change reaches each of the account's sockets, island
 and Ooga Chat alike, as `{ t: "links", wants, linked }` (the asking socket alone also hears `refused`, `all` and `n`). A
 member may send `{ t: "link", to, on }`, the island's own frame, through the Room's `linkMessage`: the same rate bucket,
-limits and storage, an island player its only target. Online Oogas in Ooga Chat draws it on each island player's row,
-and lists Main Island's Ooga Chat listeners after its players in gray; every "N online" in both apps counts them, anyone
+limits and storage, an island player its only target. Online Oogas in Ooga Chat no longer draws it: with hosted chats
+Ooga Chat's voice is a chat's, which a link never reaches (the island's `outdoor` switch, which carried linked voices, is
+off), so the frames stay for the old bridge's cleanup and the links are the island's own. Online Oogas there lists Main Island's Ooga Chat listeners after its players in gray; every "N online" in both apps counts them, anyone
 also on the island once.
 
 **The contract names (#670), over the island's own frames.** No second chat format: `communitySnapshot` is the welcome,
@@ -677,10 +696,14 @@ A socket kept open across a hibernation misses nothing and gets no second welcom
 **Access ends.** Signing out, deleting the account or losing eligibility (the edge's `revoke`, #663) closes every member
 socket of that account at once (`communityRevoke`); the Room's minute sweep closes one past its hourly re-authentication
 deadline (`authUntil`, never past the session's own), no longer a contributor, banned, or silent past `STALE_MS` with its
-auto-answered pings. A Room wake restores members from their attachments as members, never as players.
+auto-answered pings. A Room wake restores members from their attachments as members, never as players, each heard from
+when the Room last heard it (`heard` in the attachment, written again at most every 30 s of frames), never at the wake,
+so a page coming back to a hibernated Room still finds its dead sockets silent.
 
 **Bounds and cost.** At most 128 members a Room and 3 an account (`COMMUNITY_MAX`, `COMMUNITY_PER_ACCOUNT`); the next is
-closed 4429. A member holds no player slot (`MAX_PLAYERS` is the island's alone), voice or NPC follower count. While any
+closed 4429, after the account's own members silent past `SILENT_MS` (75 s: a page pings every 30 s, a hidden tab's
+timers may run once a minute) are closed as stale, so pages gone without closing (a phone asleep, a network change)
+never keep the account's next page out until the sweep. A member holds no player slot (`MAX_PLAYERS` is the island's alone), voice or NPC follower count. While any
 member is connected the Room keeps its once-a-minute sweep, as it does for a player, and nothing else: a member is
 relayed only what the Room already broadcasts. With the island's `commons` switch off nobody new connects; members
 already in leave at their next sweep or reconnect.
@@ -698,6 +721,7 @@ Names only; values live in Workers secrets and the owner's password manager (`wo
 |---|---|---|---|
 | `ENVIRONMENT` | var | edge and island | `staging` or `production`; must match across the bridge |
 | `SITE_ORIGIN` | var | edge | the app's origin, for redirects, cookies, callbacks and the Origin check |
+| `ISLAND_ORIGIN` | var | edge | the island's https origin, which a Main Island chat's Go there opens (the bootstrap's `island`); unset, Go there stays off |
 | `FEATURES` | var | edge | the edge's flags, above |
 | `OOGA_CHAT_FEATURES` | var | island | the bridge's flags, above |
 | `GITHUB_CLIENT_ID` | var | edge | Ooga Chat's own GitHub OAuth App in this environment (not the island's) |

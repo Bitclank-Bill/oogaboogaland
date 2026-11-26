@@ -97,16 +97,35 @@
       el.addEventListener("click", () => actions.signIn(provider), { signal });
       return [provider, el];
     }));
+    // Its words follow the service: with hosted chats anyone signed in may ask to speak and contributors start chats.
+    const ledeOne = make("span", ""), ledeTwo = make("span", ""), lede = make("p", "oc-lede", ledeOne, make("br"), ledeTwo);
+    const noteText = make("span", ""), foot = make("p", "oc-foot");
     const signedOut = make("div", "slab oc-slab oc-signin",
-      art,
-      make("p", "oc-lede", "Listen to the island.", make("br"), "Speak from the clouds."),
+      art, lede,
       make("div", "oc-providers", providers.github, providers.x),
-      make("div", "oc-note", make("strong", "", "Everyone can listen."),
-        make("span", "", "Team Ooga Booga contributors signed in with GitHub can also speak from a cloud.")),
-      make("p", "oc-foot", "X accounts join as listeners."));
+      make("div", "oc-note", make("strong", "", "Everyone can listen."), noteText), foot);
+    let wordsFor = null;
+    const sayWelcome = (chats) => {
+      if (wordsFor === chats) return;
+      wordsFor = chats;
+      ledeOne.textContent = chats ? "Voice chats from the island." : "Listen to the island.";
+      ledeTwo.textContent = chats ? "Join one and ask to speak." : "Speak from the clouds.";
+      noteText.textContent = chats ? "Anyone signed in can ask to speak. Team Ooga Booga contributors signed in with GitHub can also start a chat."
+        : "Team Ooga Booga contributors signed in with GitHub can also speak from a cloud.";
+      foot.textContent = chats ? "" : "X accounts join as listeners.";
+      foot.hidden = chats;
+    };
+    sayWelcome(false);
     const space = audience(ctx);
     // The tag in the title's corner names the one zone the space shows for now, as the island's panel does.
     const head = panelHead("Ooga Chat");
+    // Hosted chats (ooga-chat-hosts.js), once here.
+    let hosts = null, hostsAsked = false, last = null;
+    const hostsHere = () => {
+      if (hosts || !BL.oogaChatHosts || listeners.signal.aborted) return;
+      hosts = BL.oogaChatHosts.create(ctx, { node, head: head.header, space });
+      if (last) update(last);
+    };
     const node = make("section", "panel oc-panel oc-chat", head.header, line, alert.el, signedOut, ...space.nodes);
     node.dataset.panel = "cloud";
     node.dataset.space = "off";
@@ -128,15 +147,24 @@
         portraitWatch = new MutationObserver(watchPortraits);
         portraitWatch.observe(node.parentElement, { attributes: true, attributeFilter: ["hidden"] });
       }
+      last = state;
       const { mode, boot, session, auth, notice: shown, busy } = state;
-      const live = mode === "live", who = live && session;
+      const live = mode === "live", who = live && session, chats = !!who && boot.features.chats;
+      if (chats && !hosts && !hostsAsked) {
+        hostsAsked = true;
+        BL.oogaChatChunks.ready("hosts", hostsHere);
+        BL.oogaChatChunks.load("hosts")?.catch(() => setTimeout(() => { hostsAsked = false; }, 30000));
+      }
       // Sign-in shows once signed out is known: loading and the session check show only the title and status. Signing
       // out keeps the space's footer, which says so, until the server confirms.
       signedOut.hidden = !!who || mode === "loading" || live && auth === "checking";
-      node.dataset.space = who ? "on" : busy === "signout" ? "foot" : "off";
-      set(head.chip, "textContent", who ? ZONE_NAMES[state.zone] : "");
+      node.dataset.space = who ? chats && !state.room ? "list" : "on" : busy === "signout" ? "foot" : "off";
+      // In a chat its land; on the chats list none (no zone is shown there), even before the chats' views have loaded.
+      set(head.chip, "textContent", who ? state.room && BL.chatHosts ? BL.chatHosts.ZONE_NAMES[state.room.zone] || "" : chats ? "" : ZONE_NAMES[state.zone] : "");
+      if (live) sayWelcome(!!boot.features.chats);
       let words = STATUS[mode] || "";
       if (live && auth === "checking") words = "Checking your sign-in…";
+      if (chats && !hosts) words = "Opening chats…";
       if (live && boot.newer) words = "A newer Ooga Chat is out.";
       if (!state.device.online) words = OFFLINE;
       set(status, "textContent", words);
@@ -144,13 +172,17 @@
       reload.hidden = mode !== "stale" && !(live && boot.newer);
       again.hidden = mode !== "unavailable";
       alert.update(live ? shown : null, busy);
+      // A provider that is off is not offered, while another is on; with none on, each says it is unavailable.
+      const anyOn = live && Object.keys(providers).some((p) => boot.features[p]);
       for (const [provider, el] of Object.entries(providers)) {
         const on = live && boot.features[provider], [label, opening, off] = PROVIDERS[provider];
+        el.hidden = anyOn && !on;
         el.disabled = !on || auth === "checking" || !!busy || !state.device.online;
         el.textContent = busy === provider ? opening : on || !live ? label : off;
         el.setAttribute("aria-busy", String(busy === provider));
       }
       space.update(state);
+      hosts?.update(state);
       // Focus follows the account: into the space on signing in, onto the first way back in on leaving it, and only
       // when the control that held it went away.
       const lost = !node.ownerDocument.activeElement || node.ownerDocument.activeElement === node.ownerDocument.body;
@@ -175,6 +207,7 @@
       listeners.abort();
       clearInterval(portraitTimer);
       portraitWatch?.disconnect();
+      hosts?.dispose();
       space.dispose();
       node.remove();
     };
@@ -188,9 +221,9 @@
   const ZONE_NAMES = { main: "Main Island", dsb: "DSB Land" };
   const HEARD = {
     connecting: () => "Connecting…",
-    joining: (zone) => `Joining ${ZONE_NAMES[zone]}…`,
+    joining: (zone, chat) => chat ? "Joining the chat…" : `Joining ${ZONE_NAMES[zone]}…`,
     reconnecting: () => "Reconnecting… this list may be out of date.",
-    full: (zone) => `${ZONE_NAMES[zone]} is full right now. Ooga Chat will try again.`,
+    full: (zone, chat) => `${chat ? "This chat" : ZONE_NAMES[zone]} is full right now. Ooga Chat will try again.`,
     closed: () => "Listening is off right now. Ooga Chat will try again in a few minutes.",
     unavailable: () => "Live audio isn't open here yet.",
     stale: () => "This page is older than Ooga Chat's service. Reload to keep listening."
@@ -327,11 +360,12 @@
       // from their microphone's meter (ooga-chat-media.js `speaking`, alone or not), anyone else's from their voice's
       // (`talking`).
       const speaker = p.role === "speaker", you = p.id === self;
-      t.id = p.id; t.display = p.display; t.role = p.role; t.source = !speaker ? "" : p.source === "world" ? "world" : "chat";
-      t.face = p.face || sheetFace(p.character); t.hand = p.hand || ""; t.self = you;
+      t.id = p.id; t.display = p.display; t.role = p.role; t.source = !speaker ? "" : p.source === "world" && !p.via ? "world" : "chat";
+      t.face = p.face || sheetFace(p.character); t.hand = p.hand || ""; t.self = you; t.rank = p.rank || ""; t.request = p.request || ""; t.chat = !!p.via; t.walking = speaker && !!p.walking; t.reconnecting = !!p.reconnecting;
       describeMic(ctx, p, you, t);
     };
-    const tiles = BL.audienceTiles.create(list, { mic: (id) => pressMic(ctx, id, id === self) });
+    let menu = null;
+    const tiles = BL.audienceTiles.create(list, { mic: (id) => pressMic(ctx, id, id === self), menu: (...a) => menu?.(...a) });
     const render = () => {
       frame = 0;
       tiles.draw(people, describe);
@@ -366,8 +400,9 @@
       // The feed's state first; then voice's (playback the browser held back, a receiver that gave up, what the last try
       // to speak said); then an empty zone.
       const failed = now.status === "live" && state.voice.phase === "failed";
-      const words = HEARD[now.status]?.(zone) || (now.status !== "live" ? "" : state.voice.blocked ? "Tap anywhere to hear this zone."
-        : failed ? "Can't hear this zone right now. " : state.voice.notice || (!now.list.length ? "Nobody is here yet." : ""));
+      const place = state.room ? "chat" : "zone";
+      const words = HEARD[now.status]?.(zone, !!state.room) || (now.status !== "live" ? "" : state.voice.blocked ? `Tap anywhere to hear this ${place}.`
+        : failed ? `Can't hear this ${place} right now. ` : state.voice.notice || (!now.list.length ? "Nobody is here yet." : ""));
       set(statusText, "textContent", words);
       set(retryVoice, "hidden", !failed);
       set(heard, "hidden", !words);
@@ -392,9 +427,9 @@
       volumeButtons.clear();
       foot.dispose();
     };
-    return { nodes: [heard, list, volumeBox, footRow], update, focus, dispose };
+    return { nodes: [heard, list, volumeBox, footRow], update, focus, dispose, parts: { list, footRow, foot: foot.parts }, setMenu(fn) { menu = fn; } };
   };
-  // The Ooga Chat panel's footer, the island's: the visitor's name (a purple dot only while speaking from Ooga Chat), the
+  // The Ooga Chat panel's footer, the island's: the visitor's name (Ooga Chat's purple dot while signed in), the
   // fixed-width microphone, always first and off for a listener, Join Voice for a listener the server allows to speak
   // (Leave Voice for a speaker), and Sign out. A disabled button says why on itself. The voice state is the seam's
   // (`state.voice`); nothing here opens a microphone.
@@ -420,15 +455,16 @@
       else actions.joinVoice();
     }, { signal });
     out.addEventListener("click", () => actions.signOut(), { signal });
-    const node = make("div", "cloud-foot", name, make("span", "cloud-foot-actions", mute, join, out), muteWhy, joinWhy);
+    const footActions = make("span", "cloud-foot-actions", mute, join, out);
+    const node = make("div", "cloud-foot", name, footActions, muteWhy, joinWhy);
     const update = (state) => {
       set(out, "textContent", state.busy === "signout" ? "Signing out…" : "Sign out");
       set(out, "disabled", !!state.busy);
       const who = state.mode === "live" && state.session;
       if (!who) return;
       set(name, "textContent", who.identity.display);
-      const speaker = state.voice.role === "speaker", allowed = gates(state, Date.now());
-      const source = speaker ? "chat" : "";
+      const speaker = state.voice.role === "speaker", allowed = state.room ? { joinVoice: state.room.you?.speak === "eligible" || !!state.voice.elsewhere, why: null } : gates(state, Date.now());
+      const source = "chat";
       if (name.dataset.source !== source) name.dataset.source = source;
       set(mute, "disabled", !speaker || !!state.busy || state.voice.busy);
       set(mute, "textContent", speaker && !state.voice.muted ? "Mute" : "Unmute");
@@ -445,8 +481,8 @@
     };
     const dispose = () => listeners.abort();
     // Where focus lands on signing in: the first of the footer's buttons that can be pressed.
-    const focus = () => [mute, join, out].find((el) => !el.disabled).focus();
-    return { node, update, focus, dispose };
+    const focus = () => [mute, join, out].find((el) => !el.disabled && !el.hidden).focus();
+    return { node, update, focus, dispose, parts: { mute, join, actions: footActions } };
   };
   // Under the frame: install help the browser actually offers (its own prompt, or Safari's Share menu), and a waiting
   // update, which never reloads by itself and waits while the visitor speaks.

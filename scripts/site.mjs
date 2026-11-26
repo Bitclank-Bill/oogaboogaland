@@ -31,7 +31,7 @@ import { catalogPageAttributes } from "./character-catalog-build.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const out = resolve(root, process.argv[2] || "untracked/site");
-const { deferred, block } = await import("./build.mjs");
+const { deferred, block, portableLounge } = await import("./build.mjs");
 
 const context = { window: {} };
 vm.runInNewContext(readFileSync(join(root, "src", "js", "routes.js"), "utf8"), context);
@@ -68,7 +68,11 @@ if (process.argv.includes("--audio-assets")) shell = externalizeAudio(shell, roo
 const pictures = process.argv.includes("--image-assets");
 // A picture module outside every data-defer group stays in the page's own script and is rewritten there.
 const inlinePictures = pictures ? PICTURE_MODULES.filter((src) => ![...deferred.values()].some((sources) => sources.includes(src))) : [];
-shell = externalizeModules(shell, out, deferred, block, writeTerrainWorker(root, out), pictures ? (src, text) => PICTURE_MODULES.includes(src) ? externalizePictures(src, text, out) : text : undefined, inlinePictures, writeMicFilter(root, out));
+const hostedModule = (src, text) => {
+  if (src === portableLounge) return "";
+  return pictures && PICTURE_MODULES.includes(src) ? externalizePictures(src, text, out) : text;
+};
+shell = externalizeModules(shell, out, deferred, block, writeTerrainWorker(root, out), hostedModule, [...inlinePictures, portableLounge], writeMicFilter(root, out));
 if (process.argv.includes("--page-assets")) shell = externalizePage(shell, out, block, ["js/jumbotron-data.js"]);
 if (shell.split("</title>").length !== 2 || shell.split("</head>").length !== 2) throw new Error("oogaboogaland.html: expected one <title> and one </head>");
 

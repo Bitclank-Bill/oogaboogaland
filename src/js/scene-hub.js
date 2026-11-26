@@ -337,6 +337,162 @@
     pilot.transformView(cloudMoveMatrix, 0);
     cameraPreviousValid = cameraTerrainValid = false;
   };
+  // A hosted chat's copy of Main Island (chat-copy.js, which this visit hands its pieces through `copyHooks`): the same
+  // island with only the chat's members on it. While `copyOn` every crew Ooga but the visitor's, every gorilla and their
+  // gear are put away (`copyMask`, as Cloud Hopper puts them away, the NPCs' simulation held by `npcPaused`), the
+  // island's world and the crew's sync rest, the clouds are dealt again for the chat's benches (`layoutClouds`), and
+  // every cave mouth but HQ's ramps, which stay open down to HQ and its basement, is sealed with the stone face a dark
+  // mouth wears (`copyBarred`, through `crossesSealedCave`); the doors that change scene refuse with SEALED. Only the
+  // main island stands: the Mempool island, Merge Rock, the Timechain Sphere's islet and ₿IFRÖST's islet go with their
+  // bridges, Heimdall, the Oogatron, the OBL cave's mirror, the signs over the sealed mouths, every cave's banners, the islets
+  // out at sea and the gulls and sails round the island (`copyOffMap`, hidden
+  // in `copyMask`, so they neither draw nor stand anywhere to walk on or bump into: a walker off a bridgehead falls to
+  // the water and comes back by the pile), their lamps take no light (`copyOff`), and none of them runs: the Mempool
+  // island's weather, water, wildlife and paintings, Merge Rock's turn, glow and idle carving, the Sphere's doorway,
+  // ₿IFRÖST's field, window and Heimdall, the Oogatron's repaints, the mirror's ripples and the gulls and sails all rest until the trip
+  // ends, their meshes kept on the GPU for the way back. The visitor's own Ooga beams out and in through `copyBeam`
+  // (sleep-beam.js) and, between, stands hidden (`copySelfHidden`).
+  let copyOn = false, copyBeam = null, copySelfHidden = false;
+  const copyHidden = new Map(), copySealNodes = [], copyPlanes = [], copyOffMap = [];
+  const COPY_SEALED = "Sealed while you're on the chat's island";
+  const copyHide = (node) => {
+    if (!node) return;
+    if (!copyHidden.has(node)) copyHidden.set(node, node.visible);
+    node.visible = false;
+  };
+  const copyMask = () => {
+    if (copyOn) {
+      for (const cave of crew.list) if (cave !== crew.player) {
+        copyHide(cave.root); copyHide(cave.sleepWeapons); copyHide(cave.breathBatch);
+        if (cave.pet) copyHide(cave.pet.node);
+        if (cave.magazineModels) for (const magazine of cave.magazineModels) copyHide(magazine?.node);
+        if (cave.stunGear) for (const drop of cave.stunGear.drops) copyHide(drop.node);
+      }
+      for (const entry of clankers.list) copyHide(entry.root);
+      for (const item of clankerEquipment) copyHide(item.node);
+      for (let i = 0; i < copyOffMap.length; i++) copyHide(copyOffMap[i]);
+    }
+    const own = copySelfHidden && crew.player;
+    if (own) { own.root.visible = false; if (own.pet) own.pet.node.visible = false; }
+  };
+  // Every open mouth's stone face but HQ's ramps, as planes a walker may not cross.
+  const copySeal = (on) => {
+    for (const node of copySealNodes) removeChild(node.parent, node);
+    copySealNodes.length = copyPlanes.length = 0;
+    if (!on) return;
+    for (const entry of CAMERA_OPENINGS) {
+      if (entry.blocked || entry.headquarters) continue;
+      const m = entry.mouth, geometry = hubModels.sealedCaveFace(sealedCaveVariant(entry.id)), stop = 0.52 + geometry.frontZ + 0.01;
+      const node = createNode({ geometry, position: { x: m.x + entry.sr * 0.52, y: m.floorY, z: m.z + entry.cr * 0.52 }, rotation: { x: 0, y: m.ry, z: 0 }, sightHidden: true });
+      addChild(root, node);
+      copySealNodes.push(node);
+      copyPlanes.push({ x: m.x, z: m.z, floor: m.floorY, sr: entry.sr, cr: entry.cr, stop, minX: PORTAL_MIN_X, maxX: PORTAL_MAX_X, top: PORTAL_MAX_Y });
+    }
+  };
+  const copyBarred = (fromX, fromZ, toX, toZ, y) => {
+    for (let i = 0; i < copyPlanes.length; i++) {
+      const s = copyPlanes[i];
+      if (y < s.floor - STEP_MAX || y > s.floor + s.top) continue;
+      const a = (fromX - s.x) * s.sr + (fromZ - s.z) * s.cr - s.stop, b = (toX - s.x) * s.sr + (toZ - s.z) * s.cr - s.stop;
+      if (a * b > 0 || a === b) continue;
+      const k = a / (a - b), across = (lerp(fromX, toX, k) - s.x) * s.cr - (lerp(fromZ, toZ, k) - s.z) * s.sr;
+      if (across >= s.minX && across <= s.maxX) return true;
+    }
+    return false;
+  };
+  // Where the visitor's Ooga stands now: its feet, heading and zone.
+  const copySpot = () => {
+    const cave = crew.player, p = cave.root.position;
+    return { x: p.x, y: p.y - cave.baseY, z: p.z, yaw: cave.root.rotation.y, zone: BL.net.state.zone || "outside" };
+  };
+  const copyMode = (on) => {
+    if (on === copyOn) return;
+    copyOn = on;
+    if (on) {
+      clankers.cancelSleepBeams();
+      clankers.setAway(true);
+      npcStatusBeams?.clear();
+      if (islandWorld) { islandWorld.dispose(); islandWorld = null; }
+      // Tess belongs to the island, not the chat's copy: put away (her offer and any tour ended) until the trip ends.
+      islandGuide.suspend();
+      islandGuide.root.visible = false;
+      copyMask();
+    } else {
+      for (const [node, visible] of copyHidden) node.visible = visible;
+      copyHidden.clear();
+      islandGuide.root.visible = true;
+      islandGuide.resume();
+      clankers.setAway(gameMode);
+      crew.refreshStates(true);
+      if (!islandWorld) startIslandWorld();
+    }
+    // The Mempool island's cloud deck, rain and storm go with it, as GAME MODE holds them; its water, wildlife and
+    // paintings rest with its proximity gate (`updatePoolEffectsActivity`), and the lamps choose again without theirs.
+    weather.hold(on || gameMode);
+    updatePoolEffectsActivity();
+    lampSelValid = false;
+    copySeal(on);
+    layoutClouds(on);
+    solids.sync(); totemSolids.sync();
+  };
+  // The Ooga set down at `to` (its feet and heading), the view with it, as Cloud Hopper's `cloudMove` does.
+  const copyMove = (to) => {
+    const cave = crew.player, p = cave.root.position;
+    math.mat4.identity(cloudMoveMatrix);
+    cloudMoveMatrix[12] = to.x - p.x;
+    cloudMoveMatrix[13] = to.y + cave.baseY - p.y;
+    cloudMoveMatrix[14] = to.z - p.z;
+    crew.relocatePlayer(to, to.yaw);
+    pilot.transformView(cloudMoveMatrix, 0);
+    cameraPreviousValid = cameraTerrainValid = false;
+    playerCaveIndex = 0;
+    setVec(PLAYER_PREVIOUS, p.x, p.y, p.z);
+    setVec(PLAYER_POSITION, p.x, p.y, p.z);
+  };
+  const copyHooks = {
+    refusal() {
+      const cave = pilot.player;
+      if (!cave || crew.player !== cave) return clankerPlay?.active ? "Let go of the gorilla first" : "Take your own Ooga first";
+      if (cloudHopper?.active) return "Finish Cloud Hopper first";
+      if (gameMode) return "Not during an island event";
+      if (BL.net.cabinet) return "Leave the cabinet first";
+      if (BL.duel.active?.duel) return "Finish the duel first";
+      if (cave.hammockRest) return "Get out of the hammock first";
+      if (BL.outdoorScope.state.scope !== "main") return "Go out onto the island's open air first";
+      return pilot.travelRefusal() || "";
+    },
+    spot: copySpot,
+    hold(on) { pilot.setActive(!on); if (on) hud.tooltip.hide(); },
+    beam(progress, incoming) {
+      const cave = crew.player;
+      if (progress < 0 || !cave) { if (copyBeam) copyBeam.hide(0); return; }
+      copyBeam ||= BL.sleepBeam.create({ root, capacity: 1 });
+      const p = cave.root.position;
+      copyBeam.show(0, p.x, p.y - cave.baseY, p.z, cave.root.rotation.y, progress, incoming, cave.root);
+    },
+    show(on) {
+      copySelfHidden = !on;
+      const cave = crew.player;
+      if (on && cave) { cave.root.visible = true; if (cave.pet) cave.pet.node.visible = true; }
+      copyMask();
+    },
+    // Into the copy: the island put away and sealed, and the Ooga beside the pile by the hub's own arrival search.
+    enter() {
+      copyMode(true);
+      pilot.setActive(true, true);
+      const cave = crew.player;
+      if (cave) { cave.root.visible = true; navigate("pile", true, true); }
+      pilot.setActive(false);
+      copyMask();
+      return copySpot();
+    },
+    // Out of it: the island as it was and, unless the visit is ending, the Ooga back exactly where it stood.
+    exit(home) {
+      copyMode(false);
+      if (home && crew.player) copyMove(home);
+    }
+  };
+
   // GAME MODE's ring (`updateGameRing`): the group holding its veils, how far it has risen (0 to 1) and the seconds left
   // before it starts up; the veils themselves, each with its ripples.
   let gameRing = null, gameRingK = 0, gameRingWait = 0;
@@ -835,11 +991,13 @@
   // released with the visit's other targets. `toWorld` maps a piece's set coordinates to the island, or null to
   // leave it out (the furniture inside a mouth belongs to the cave, not the facade).
   const PICK_GEOMETRY = { verts: [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], faces: [], lines: [] };
-  const addPieceTargets = (picks, toWorld) => {
+  // `copyOff`: targets a chat's copy hides with what they stand for (`copyOffMap`).
+  const addPieceTargets = (picks, toWorld, copyOff = false) => {
     for (let i = 0; i < picks.length; i += 6) {
       const at = toWorld(picks[i + 2], picks[i + 3], picks[i + 4], picks[i]);
       if (!at) continue;
       const node = createNode({ position: at, geometry: PICK_GEOMETRY });
+      if (copyOff) copyOffMap.push(node);
       BL.scene.updateWorld(node);
       addTarget(node, { kind: "piece", piece: picks[i], variant: picks[i + 1], node, x: at.x, y: at.y, z: at.z, next: 0, weaponType: "none" }, { radius: Math.max(0.35, picks[i + 5]) });
     }
@@ -1097,6 +1255,8 @@
     for (let i = 0; i < lamps.length; i++) {
       const l = lamps[i], node = l.node;
       if (l.light) registered++;
+      // In a chat's copy the other islands' lamps rest, hidden with them, and take no light (`far`, as out of reach).
+      if (copyOn && l.copyOff) { l.far = true; continue; }
       // GAME MODE puts the meadow's fire pit out: no flame, no light, nothing to catch fire from.
       const k = l === coilLamp ? (coilActive ? 1 : 0) : l === fire && gameMode ? 0 : l.always ? 1 : l.nightOnly ? (lanternsOn ? 1 : 0)
         : Math.min(1, Math.max(0, (RENDER_OPTS.torch - l.order * LAMP_STAGGER) / LAMP_RAMP));
@@ -1337,6 +1497,8 @@
   };
   const THEME_ICON = (slot) => slot.id === "c1" ? "favicon" : THEMES[slot.theme]?.icon || null;
   const trackCaveSign = (node, slot, mouth) => {
+    // A chat's copy seals every mouth but HQ's, and takes down the names over them.
+    if (slot.status !== "headquarters") copyOffMap.push(node);
     signDetails.push({
       node, solid: node.geometry, pixels: hubModels.caveSign(slot.name, THEME_ICON(slot), true, true),
       x: mouth.x + Math.sin(mouth.ry) * node.position.z, y: mouth.floorY + node.position.y,
@@ -1369,14 +1531,15 @@
     if (baked) return baked;
     const theme = THEMES[slot.theme];
     const sr = Math.sin(m.ry), cr = Math.cos(m.ry);
-    const set = BL.dressing.set(), ground = [], rig = {};
+    // The banners are a set of their own, so a chat's copy can take them down (`dressMouth`).
+    const set = BL.dressing.set(), flags = BL.dressing.set(), ground = [], rig = {};
     // Floor props stay on the apron; banners stand on the raised rock shoulders behind the lamps.
-    const stand = (kind, lx, lz, turns = 0, variant = 0, lift = 0) => {
+    const stand = (kind, lx, lz, turns = 0, variant = 0, lift = 0, into = set) => {
       const x = m.x + cr * lx + sr * lz, z = m.z - sr * lx + cr * lz;
       if ((kind === "barrel" || kind === "bench") && island.overlapsStairs(x, z, 1.7)) return;
       const y = island.surfaceAt(x, z) - m.floorY;
       if (Math.abs(y) > 0.9 && kind !== "banner") return;
-      set.put(kind, lx, y + lift, lz, turns, variant, LOOSE_PIECES.has(kind));
+      into.put(kind, lx, y + lift, lz, turns, variant, LOOSE_PIECES.has(kind));
       // The coil and its gauge charge on a loop of their own (`coilCharge`).
       if (kind === "coil" || kind === "gauge") rig[kind] = [lx, y + lift, lz, turns];
       if (!lift) ground.push(lx, lz);
@@ -1389,7 +1552,7 @@
     }
     for (const [side, variant] of theme.banners || []) {
       checkCaveBanner(m, side);
-      stand("banner", side * CAVE_BANNER_X, CAVE_BANNER_Z, 0, variant);
+      stand("banner", side * CAVE_BANNER_X, CAVE_BANNER_Z, 0, variant, 0, flags);
     }
     const [lamp, variant, at] = theme.string;
     set.cable(-3.05, 3.42, CAVE_LIGHT_Z, 3.05, 3.42, CAVE_LIGHT_Z, 0.3, at || [0.1, 0.24, 0.38, 0.5, 0.62, 0.76, 0.9], lamp, variant);
@@ -1405,7 +1568,7 @@
       set.cable(ax, y, az, ax, y, bz, 0.15, lamps, lamp, theme.glass);
       set.cable(bx, y, az, bx, y, bz, 0.15, lamps, lamp, theme.glass);
     }
-    baked = { ...set.build(), ground, rig };
+    baked = { ...set.build(), ground, rig, banners: theme.banners && theme.banners.length ? flags.build() : null };
     byIsland.set(slot.id, baked);
     return baked;
   };
@@ -1604,7 +1767,16 @@
     addDressing(baked, group, m.x, m.floorY + 2.4, m.z, `${slot.id}:dressing`, false);
     const sr = Math.sin(m.ry), cr = Math.cos(m.ry), g = baked.ground, lit = baked.lights;
     for (let i = 0; i < lit.length; i += 4) dressingLights.push(m.x + cr * lit[i] + sr * lit[i + 2], m.floorY + lit[i + 1], m.z - sr * lit[i] + cr * lit[i + 2], lit[i + 3]);
-    addPieceTargets(baked.picks, (lx, ly, lz, kind) => lz < 0.3 && kind !== "banner" ? null : { x: m.x + cr * lx + sr * lz, y: m.floorY + ly, z: m.z - sr * lx + cr * lz });
+    const toWorld = (lx, ly, lz, kind) => lz < 0.3 && kind !== "banner" ? null : { x: m.x + cr * lx + sr * lz, y: m.floorY + ly, z: m.z - sr * lx + cr * lz };
+    addPieceTargets(baked.picks, toWorld);
+    // The banners, which a chat's copy takes down with their lights and pick targets.
+    if (baked.banners) {
+      const from = group.children.length, lit = lamps.length;
+      addDressing(baked.banners, group, m.x, m.floorY + 2.4, m.z, `${slot.id}:banners`, false);
+      for (let i = from; i < group.children.length; i++) copyOffMap.push(group.children[i]);
+      for (let i = lit; i < lamps.length; i++) lamps[i].copyOff = true;
+      addPieceTargets(baked.banners.picks, toWorld, true);
+    }
     for (const piece of baked.loose) addLoosePiece(piece, m);
     if (baked.rig.coil) buildCoilCharge(group, baked.rig, m);
     if (slot.theme === "lab") placeChalkboard(m, group);
@@ -2130,6 +2302,8 @@
       const node = createNode({ geometry: BL.dressing.islet(i % 3, true), position: { x: p.x, y: SEA_Y - 2, z: p.z }, rotation: { x: 0, y: deg * 0.7, z: 0 }, sightHidden: true });
       addChild(root, node);
       placed.push(node);
+      // A chat's copy is Main Island alone: no other island, however far out.
+      copyOffMap.push(node);
     });
   };
   // Life over the sea: gulls wheeling round the island and sails out on the water. Keep these moving at
@@ -2144,6 +2318,8 @@
     for (const node of [gulls.node, shore.node, ...boats.nodes]) {
       addChild(root, node);
       placed.push(node);
+      // A chat's copy is Main Island alone: no gulls or sails, which belong to the island's own sea.
+      copyOffMap.push(node);
     }
     life = { gulls, shore, boats };
   };
@@ -2268,6 +2444,8 @@
       const node = createNode({ position: { x: 0, y: 1.5, z: 0.5 }, geometry: hubModels.mirrorPanel(), mirror: true, mirrorWalkThrough: true, mirrorReveal: 0 });
       addChild(group, node);
       mirrorCave = { slot, mouth: m, group, rim, node, sign: null };
+      // A chat's copy seals this mouth with stone where the mirror stood.
+      copyOffMap.push(node);
       addTarget(node, { kind: "cave", slot, priority: 1 });
       // Keep the room empty; this state only caches the shared action prompt.
       matrixControl = { promptPlayer: null, promptAction: null, promptJet: false, promptRecovering: false };
@@ -2955,7 +3133,7 @@
     poolCameraActive = !!architectCave?.active && (architectCave.cameras.observes("rainforest") || architectCave.cameras.observes("rainforest-under"));
     const radius = poolEffectsActive ? POOL_EFFECTS_FAR : POOL_EFFECTS_NEAR;
     const player = clankerPlay?.player || pilot?.player;
-    const active = !gameMode && !cloudPlaying() && !architectCave?.active && (nearPoolEffects(camera.position, radius) || nearPoolEffects(camera.target, radius)
+    const active = !gameMode && !cloudPlaying() && !copyOn && !architectCave?.active && (nearPoolEffects(camera.position, radius) || nearPoolEffects(camera.target, radius)
       || !!player && nearPoolEffects(player.root.position, radius));
     if (!waterWasActive && (active || poolCameraActive)) mempoolIsland.water.resume();
     if (active === poolEffectsActive) return;
@@ -3077,15 +3255,20 @@
     yield* BL.repoIslandModels.rockSteps.steps(slice);
     yield* pause(slice);
     const site = BL.repoIsland.create({ island, renderer, hooks: {
-      addTarget, removeTarget, addTotemSolid: node => totemSolids.add(node),
-      addTotemLight: (index) => addLamp({ glow: 0, flare: 0, visible: true }, { r: 0, g: 0, b: 0, radius: 0, glow: 0, hide: false }, 0, 0, 0, true, Infinity, `repo-totem:${index}`),
+      // Its pick targets hang off the scene graph, so a chat's copy hides each one itself (`copyOffMap`).
+      addTarget: (node, owner, opts) => { copyOffMap.push(node); addTarget(node, owner, opts); }, removeTarget, addTotemSolid: node => totemSolids.add(node),
+      addTotemLight: (index) => {
+        const lamp = addLamp({ glow: 0, flare: 0, visible: true }, { r: 0, g: 0, b: 0, radius: 0, glow: 0, hide: false }, 0, 0, 0, true, Infinity, `repo-totem:${index}`);
+        lamp.copyOff = true;
+        return lamp;
+      },
       updateTotemLight: (lamp, x, y, z, power, radius) => {
         const light = lamp.kind, always = power > 0;
         if (lamp.x !== x || lamp.y !== y || lamp.z !== z || lamp.always !== always || light.r !== power || light.radius !== radius) lampSelValid = false;
         lamp.x = x; lamp.y = y; lamp.z = z; lamp.always = always;
         light.r = power; light.g = 0.62 * power; light.b = 0.3 * power; light.radius = radius;
       },
-      visible: () => !document.hidden && !!repoIsland && !cloudPlaying() && renderer.kind === "webgl2",
+      visible: () => !document.hidden && !!repoIsland && !cloudPlaying() && !copyOn && renderer.kind === "webgl2",
       near: () => !!pilot?.player && (() => { const p = pilot.player.root.position, feet = p.y - pilot.player.baseY; return site.onIsland(p.x, feet, p.z) || site.onBridge(p.x, feet, p.z); })(),
       toast: (text) => hud.toast(text)
     } });
@@ -3624,7 +3807,7 @@
   const floatPose = (cave, feet, height, phase, time) => {
     const p = cave.root.position;
     if (cave.grabbedBy) return;
-    if (!mempoolIsland || !mempoolIsland.afloat(p.x, p.z, feet, height * OOGA_DRAUGHT)) {
+    if (!mempoolIsland || copyOn || !mempoolIsland.afloat(p.x, p.z, feet, height * OOGA_DRAUGHT)) {
       if (cave.poolSwimming) {
         cave.poolSwimming = false;
         cave.parts.armL.rotation.z = 0.12;
@@ -3644,7 +3827,7 @@
     parts.armL.rotation.x = parts.armR.rotation.x = -0.25 + c * 0.22;
     parts.legL.rotation.x = c * 0.3; parts.legR.rotation.x = -c * 0.3;
   };
-  const waterSupportAt = (x, z, y, rise, player) => mempoolIsland ? mempoolIsland.floatAt(x, z, y, rise, player ? player.bodyHeight * OOGA_DRAUGHT : CLOSE_VIEW.eyeHeight * OOGA_DRAUGHT) : -Infinity;
+  const waterSupportAt = (x, z, y, rise, player) => mempoolIsland && !copyOn ? mempoolIsland.floatAt(x, z, y, rise, player ? player.bodyHeight * OOGA_DRAUGHT : CLOSE_VIEW.eyeHeight * OOGA_DRAUGHT) : -Infinity;
   const rageThrown = actor => !!(actor?.leap?.thrown && actor.leap.rageThrown);
   const playerSupportAt = (x, z, y = 0, previousY = y, player = pilot?.player, ignoreClanker = false, passTraffic = false) => {
     passTraffic = passTraffic || rageThrown(player);
@@ -4825,7 +5008,8 @@
     return radius;
   };
   const mirrorActorSegmentClear = (x, y, z, toX, toY, toZ, height, actor, fixedRadius = 0) => {
-    if (actor && actor === pilot?.player && !clankerPlay.active) return true;
+    // A chat's copy takes the mirror down; the stone sealing its mouth stops walkers instead.
+    if (copyOn || actor && actor === pilot?.player && !clankerPlay.active) return true;
     if (!fixedRadius && !actor) return true;
     const m = mirrorCave.mouth, sr = matrixCave.sr, cr = matrixCave.cr;
     const bounds = BL.scene.boundsOf(mirrorCave.node.geometry), radius = fixedRadius || mirrorActorRadius(actor);
@@ -5120,6 +5304,7 @@
   };
   const crossesSealedCave = (fromX, fromZ, toX, toZ, y = 0) => {
     if (crossesGameRing(fromX, fromZ, toX, toZ, y)) return true;
+    if (copyOn && copyBarred(fromX, fromZ, toX, toZ, y)) return true;
     for (let i = 0; i < sealedCaves.length; i++) {
       const sealed = sealedCaves[i], m = sealed.mouth, sr = sealed.sr, cr = sealed.cr;
       if (y < m.floorY - STEP_MAX || y > m.floorY + PORTAL_MAX_Y) continue;
@@ -5430,37 +5615,38 @@
   };
   const buildClouds = () => {
     let treetop = BL.terrain.MAX_HEIGHT;
+    cloudsCopied = false;
     for (const o of scenery) if (o.prop === "tree") {
       const node = o.node;
       treetop = Math.max(treetop, node.position.y + BL.scene.boundsOf(node.geometry).max[1] * node.scale.y);
     }
     for (const track of CLOUD_TRACKS) for (let i = 0; i < CLOUDS_PER_TRACK; i++) {
-      // Speaker clouds keep their whole mesh above the rooftop trees, even at the bottom of their gentle rise, and rise
-      // only SPEAKER_SWING as far as their lane over that floor. Measure the canopy and underside once, so a thicker
-      // cloud keeps the same two metres of clearance.
-      const shape = Math.min(2, clouds.length % 4), seats = SPEAKER_CLOUDS.includes(clouds.length);
-      const node = createNode({ geometry: seats ? hubModels.benchCloud(shape) : hubModels.cloud(shape), matrixCloud: true, sightHidden: true });
-      const waveY = seats ? track.waveY * SPEAKER_SWING : track.waveY;
+      // Every one of the island's own clouds is plain: Ooga Chat's speakers sit on benches only in a hosted chat's copy of
+      // the island (`layoutClouds`), which deals them again above the rooftop trees (`cloudTreetop`).
+      const shape = Math.min(2, clouds.length % 4);
+      const node = createNode({ geometry: hubModels.cloud(shape), matrixCloud: true, sightHidden: true });
       const cloud = { node, speed: track.speed, phase: track.phase + i * Math.PI * 2 / CLOUDS_PER_TRACK, angle: 0,
-        radius: track.radius,
-        baseY: seats ? treetop + 2 - BL.scene.boundsOf(node.geometry).min[1] - Math.min(0, waveY * 4) : track.baseY,
-        waveY };
+        radius: track.radius, baseY: track.baseY, waveY: track.waveY };
+      // The island's own layout, which a chat's copy deals again (`layoutClouds`) and gives back.
+      cloud.shape = shape;
+      cloud.home = { geometry: node.geometry, speed: cloud.speed, phase: cloud.phase, radius: cloud.radius, baseY: cloud.baseY, waveY: cloud.waveY };
       cloud.angle = cloudAngle(cloud, cloudNow());
       placeCloud(cloud);
       addChild(root, node);
       placed.push(node);
       clouds.push(cloud);
     }
+    cloudTreetop = treetop;
   };
-  // Ooga Chat speakers on clouds (#659): the room's seats, three to a cloud on three of the largest clouds (main-cloud-1
-  // to 3 on the first, 4 to 6 on the second, 7 on), each sitting on its own third of it along the cloud's long axis, the
+  // Ooga Chat speakers on clouds (#659), in a hosted chat's copy of the island alone: three to a bench cloud (main-cloud-1
+  // to 3 on the first, 4 to 6 on the second, and so on), each sitting on its own third of it along the cloud's long axis, the
   // outer two drawn SEAT_SPREAD of the way in toward the middle one, centred front to back on the cloud's top there (a
   // cloud's +z faces the island), facing the banana pile; none while the clouds are put away (game mode, Cloud Hopper),
   // and the purple glow under each one seated.
   // A seat's place on a cloud's mesh is measured once a mesh, from its upward faces (a merged face's corners can lie
   // far from a seat): along the long axis as above, midway between the top's front and back edges there, on the highest
   // upward face over that point.
-  const SPEAKER_CLOUDS = [10, 14, 3], SPEAKER_SWING = 0.5, SEAT_REACH = 0.5, SEAT_SPREAD = 0.7, SEAT_TOP = 0.6;
+  const SPEAKER_SWING = 0.5, SEAT_REACH = 0.5, SEAT_SPREAD = 0.7, SEAT_TOP = 0.6;
   const cloudThirds = new Map();
   const thirdsOf = (geometry) => {
     let thirds = cloudThirds.get(geometry);
@@ -5493,8 +5679,12 @@
   };
   const cloudSeat = (rec, out) => {
     if (rec.zone !== "main") return false;
-    const n = Number(rec.seat.slice(rec.seat.lastIndexOf("-") + 1)) - 1, cloud = clouds[SPEAKER_CLOUDS[Math.floor(n / 3)]];
+    // Seats are a hosted chat's copy's alone: the island's own clouds carry none since the public conversation went.
+    if (!cloudsCopied) return false;
+    const n = Number(rec.seat.slice(rec.seat.lastIndexOf("-") + 1)) - 1, cloud = copyBenches[Math.floor(n / 3)];
     if (!cloud || !cloud.node.visible) return false;
+    // In a chat's copy a bench stands only on a cloud someone sits on.
+    cloud.node.geometry = cloud.bench;
     const node = cloud.node, seat = thirdsOf(node.geometry)[n % 3], c = Math.cos(node.rotation.y), s = Math.sin(node.rotation.y);
     let glow = seatGlows[n];
     if (!glow || glow.parent !== node) {
@@ -5512,6 +5702,44 @@
   // The glow under each seat (hub-models.js `cloudSeatGlow`), hung on its cloud's node the first time the seat is
   // taken, all hidden before the speakers are seated each frame and shown again under each one seated.
   const seatGlows = [];
+  // A chat's copy seats all its speakers not walking it (cloud-seats-v2, main-cloud-1 to 32): the clouds are dealt
+  // again, COPY_BENCHES of them on the high track with today's three-seat bench at the speaker clouds' height (so none
+  // flies under the meadow), seats 1 to 3 on the first, 4 to 6 on the next, and the rest on the low track; a bench shows
+  // only while someone sits on it (`copyBenchesPlain` each frame, then `cloudSeat`). Leaving gives every cloud back its
+  // own track, height and mesh.
+  const COPY_BENCHES = 11;
+  const copyBenches = [];
+  let cloudTreetop = 0, cloudsCopied = false;
+  const layoutClouds = (copy) => {
+    if (copy === cloudsCopied || !clouds.length) return;
+    cloudsCopied = copy;
+    for (let i = 0; i < seatGlows.length; i++) if (seatGlows[i]) { if (seatGlows[i].parent) removeChild(seatGlows[i].parent, seatGlows[i]); seatGlows[i] = null; }
+    copyBenches.length = 0;
+    const high = CLOUD_TRACKS[1], low = CLOUD_TRACKS[0], lows = clouds.length - COPY_BENCHES, t = cloudNow();
+    for (let i = 0; i < clouds.length; i++) {
+      const cloud = clouds[i], h = cloud.home;
+      if (!copy) {
+        cloud.speed = h.speed; cloud.phase = h.phase; cloud.radius = h.radius; cloud.baseY = h.baseY; cloud.waveY = h.waveY;
+        cloud.node.geometry = h.geometry;
+      } else if (i < COPY_BENCHES) {
+        cloud.bench ||= hubModels.benchCloud(cloud.shape);
+        cloud.plain ||= hubModels.cloud(cloud.shape);
+        const waveY = high.waveY * SPEAKER_SWING;
+        cloud.speed = high.speed; cloud.phase = high.phase + i * Math.PI * 2 / COPY_BENCHES; cloud.radius = high.radius; cloud.waveY = waveY;
+        cloud.baseY = cloudTreetop + 2 - BL.scene.boundsOf(cloud.bench).min[1] - Math.min(0, waveY * 4);
+        cloud.node.geometry = cloud.plain;
+        copyBenches.push(cloud);
+      } else {
+        cloud.plain ||= hubModels.cloud(cloud.shape);
+        cloud.speed = low.speed; cloud.phase = low.phase + (i - COPY_BENCHES) * Math.PI * 2 / lows; cloud.radius = low.radius;
+        cloud.baseY = low.baseY; cloud.waveY = low.waveY;
+        cloud.node.geometry = cloud.plain;
+      }
+      cloud.angle = cloudAngle(cloud, t);
+      placeCloud(cloud);
+    }
+  };
+  const copyBenchesPlain = () => { for (let i = 0; i < copyBenches.length; i++) copyBenches[i].node.geometry = copyBenches[i].plain; };
   // Seats are taken in any order, so the list may have holes below the highest seat used.
   const hideSeatGlows = () => { for (let i = 0; i < seatGlows.length; i++) if (seatGlows[i]) seatGlows[i].visible = false; };
   // A cloud speaker's seat, for the live players tab's crosshair (players.js `setCloudSpot`).
@@ -6124,6 +6352,7 @@
         break;
       case "timechainkeypad": {
         const gate = timechainIsland.gate, player = pilot.player, at = player && player.root.position;
+        if (copyOn) { hud.toast(COPY_SEALED); break; }
         if (gate.busy) break;
         if (!player) hud.toast("Only an Ooga can go in. Double-tap one, then walk it up to the keypad.");
         else if (!gate.nearKeypad(at.x, at.y - player.baseY + 1.1, at.z)) hud.toast(gate.fromBridge() ? "Click a room number on the keypad, then Enter." : "Walk up to the keypad beside the doors.");
@@ -6225,8 +6454,8 @@
       HAMMOCK_FROM.x = x; HAMMOCK_FROM.z = z;
       return hammock.free(HAMMOCK_FROM) || HAMMOCK_FULL;
     }
-    if (arcadeMouth) { const near = arcadeMouth.entrance.nearby(x, y, z, player); if (near) return near; }
-    if (player && timechainIsland.gate && timechainIsland.gate.nearKeypad(x, y, z)) return timechainIsland.gate.action;
+    if (arcadeMouth && !copyOn) { const near = arcadeMouth.entrance.nearby(x, y, z, player); if (near) return near; }
+    if (player && !copyOn && timechainIsland.gate && timechainIsland.gate.nearKeypad(x, y, z)) return timechainIsland.gate.action;
     if (player && nearChalkboard(x, y, z)) return CHALK_ACTION;
     return null;
   };
@@ -6263,6 +6492,7 @@
   };
   const enterScene = (view, id) => {
     if (entering) return;
+    if (copyOn) return hud.toast(COPY_SEALED);
     // A game still being built is unregistered unless the page opted in (director.js, `wip`).
     if (!BL.scenes[id]) return hud.toast("Not open yet. Ooga still building it.");
     entering = true;
@@ -6514,7 +6744,7 @@
       else BL.bifrostIsle.update(b.site, dt, b.effectsTime, NaN, NaN, NaN);
     }
     b.heimdall.update(dt, elapsed, at ? at.x : orbit.tx, at ? at.y - player.baseY : orbit.ty, at ? at.z : orbit.tz, !!player);
-    if (!player || entering || bifrostWalk?.active) return;
+    if (!player || entering || bifrostWalk?.active || copyOn) return;
     const sr = Math.sin(p.ry), cr = Math.cos(p.ry);
     const along = (at.x - p.x) * sr + (at.z - p.z) * cr, across = (at.x - p.x) * cr - (at.z - p.z) * sr;
     const feet = at.y - player.baseY - p.floorY;
@@ -6719,7 +6949,7 @@
     const o = hit.owner;
     switch (o.kind) {
       case "tess":
-        islandGuide.tap();
+        if (!copyOn) islandGuide.tap();
         break;
       case "caveman":
         crew.pokeCave(o.cave);
@@ -6758,7 +6988,8 @@
         // Engaged at the keypad, the click is a press there; from the bridge's half nearer the sphere it chooses without
         // taking the Ooga or the view, until Enter.
         const gate = timechainIsland.gate, player = pilot.player;
-        if (!player) hud.toast("Only an Ooga can go in. Double-tap one, then walk it up to the keypad.");
+        if (copyOn) hud.toast(COPY_SEALED);
+        else if (!player) hud.toast("Only an Ooga can go in. Double-tap one, then walk it up to the keypad.");
         else if (o.dim && !gate.askingPin) hud.toast(`Room ${o.key} is empty.`);
         else if (gate.busy) gate.press(o.key);
         else if (!gate.pressFromBridge(o.key)) hud.toast("Walk onto the bridge up to the doors to use the keypad.");
@@ -8089,6 +8320,9 @@
       cloudPile.visible = pile.shown > 0;
       cloudPileSolids.sync();
     }
+    // A chat's copy (chat-copy.js): its trip moves on, and the island stays put away while it lasts.
+    BL.chatCopy.update(dt);
+    copyMask();
     // Four cheap proximity reads a second, without building a visit or changing its actor/account state.
     if (elapsed >= prefetchAt) {
       prefetchAt = elapsed + 0.25;
@@ -8106,7 +8340,7 @@
       }
     }
     if (lawn && lawn.version !== island.path.version) layLawn();
-    if (life && !architectCave?.active) { life.gulls.update(elapsed); life.shore.update(elapsed); life.boats.update(elapsed); }
+    if (life && !architectCave?.active && !copyOn) { life.gulls.update(elapsed); life.shore.update(elapsed); life.boats.update(elapsed); }
     now = elapsed;
     hour = clock.read();
     // A Cloud Hopper run flies under its level's own fixed sky, sampled once as it begins; the clock's hour still
@@ -8144,7 +8378,7 @@
     // Under the Mempool island's ground the storm is muffled and the daylight shut out: no shadow reaches that
     // island, so its tunnels would otherwise stand in full sun. The fires and the water light them instead.
     // By where the eye is, not what it looks at: a view from outside aimed into the rock is still outdoors.
-    const sheltered = !cloudPlaying() && mempoolIsland.coveredAt(camera.position.x, camera.position.y, camera.position.z) ? 1 : 0;
+    const sheltered = !cloudPlaying() && !copyOn && mempoolIsland.coveredAt(camera.position.x, camera.position.y, camera.position.z) ? 1 : 0;
     poolShade += clamp(sheltered - poolShade, -dt * 1.6, dt * 1.6);
     poolUnder += clamp((cutawayPool === 2 ? 1 : 0) - poolUnder, -dt * 1.6, dt * 1.6);
     // A storm level's haze takes in the sea too.
@@ -8177,12 +8411,12 @@
       rig.update(dt, rig.time);
     }
     // Merge Rock's geometry, riders and warm lights all follow this frame's turn before lamp selection and solid sync.
-    if (repoIsland && !cloudPlaying()) {
+    if (repoIsland && !cloudPlaying() && !copyOn) {
       if (repoIsland.turn()) carryRepoIsland();
       repoIsland.update(dt, elapsed, camera);
     }
     updateLamps(dt, elapsed, phase !== null);
-    if (jumbotron) {
+    if (jumbotron && !copyOn) {
       jumbotron.update(elapsed, renderer);
     }
     if (poolEffectsActive) updateChainSign(poolEffectsTime);
@@ -8202,13 +8436,13 @@
       if (clankerPlay.active) clankerPlay.readInput(dt);
       else pilot.readInput(dt);
     }
-    mirrorCave.ripples.update(dt, elapsed);
+    if (!copyOn) mirrorCave.ripples.update(dt, elapsed);
     updatePortalEffects(entropyLab.phase, dt);
     for (const veil of caveVeils) updatePortalEffects(veil.phase, dt);
     factoryWalk.warming = false;
     if (factoryMouth && !cloudPlaying()) factoryShield(dt, elapsed);
     if (arcadeMouth && !cloudPlaying()) arcadeMouth.entrance.update(dt, elapsed, pilot.player);
-    if (bifrostIsle && !cloudPlaying()) bifrostGate(dt, elapsed);
+    if (bifrostIsle && !cloudPlaying() && !copyOn) bifrostGate(dt, elapsed);
     if (bcaMouth) bcaVeil(dt, elapsed);
     if (factoryDeparting || bifrostDeparting) { npcGhosts.paint(dt); return; } // The Ooga through a shield and its camera hold through the director fade.
     if (gameMode) prepareClankerStrike();
@@ -8279,7 +8513,7 @@
     updateLabEquipment(dt);
     clankerMeshes.sync();
     if (gameMode) updateClankerEffects(dt);
-    if (timechainIsland) {
+    if (timechainIsland && !copyOn) {
       if (!gameMode) timechainIsland.site.turn((elapsed % TIMECHAIN_OUTER_PERIOD) * Math.PI * 2 / TIMECHAIN_OUTER_PERIOD);
       timechainIsland.show(dt);
       // The doorway's walks steer the Ooga before the crew moves it.
@@ -8288,7 +8522,7 @@
     // The island's world (island-world.js, off only with `islandworld=0`) places the Oogas it follows before they move;
     // without it, the room's crew host decides whether they follow it or hold (npc-sync.js `prepare`).
     if (islandWorld && !cloudPlaying()) islandWorld.update(dt);
-    else if (!cloudPlaying()) npcSync.prepare();
+    else if (!cloudPlaying() && !copyOn) npcSync.prepare();
     if (!cloudHopper?.held) crew.update(dt, elapsed);
     cloudHopper?.postUpdate();
     if (hammock) {
@@ -8310,10 +8544,11 @@
     footsteps.update(crew.player);
     // With the island's world, this page never follows the room's crew host (the world places its Oogas), but while it
     // is the host it goes on sending the crew as the world moves it, so pages without the world see the same crew.
-    if (!cloudPlaying() && (!islandWorld || BL.net.state.room === "live" && BL.net.state.hostId === BL.net.state.selfId)) npcSync.update(dt);
-    if (!cloudPlaying()) npcStatusBeams?.update(dt);
+    if (!cloudPlaying() && !copyOn && (!islandWorld || BL.net.state.room === "live" && BL.net.state.hostId === BL.net.state.selfId)) npcSync.update(dt);
+    if (!cloudPlaying() && !copyOn) npcStatusBeams?.update(dt);
     shareDrivenActor(dt);
     hideSeatGlows();
+    if (cloudsCopied) copyBenchesPlain();
     remotes.update(dt);
     updatePhysics(dt);
     duels.update(dt);
@@ -8368,18 +8603,18 @@
     else if (!cloudHopper?.fallView()) pilot.update(dt);
     bifrostWalk?.update(dt);
     // The doorway's views (the keypad's, the swoop into the eyes and back out) take over from the pilot's.
-    if (!cloudPlaying()) timechainIsland.gate.view(dt);
+    if (!cloudPlaying() && !copyOn) timechainIsland.gate.view(dt);
     if (factoryMouth && !cloudPlaying()) factoryWalk.eyes.view(dt);
     // Tess moves after the view is set, so a tour's glide has the last word on it.
-    if (!cloudHopper?.active && !architectCave?.active && !architectCave?.arriving) islandGuide.update(dt, elapsed);
+    if (!cloudHopper?.active && !architectCave?.active && !architectCave?.arriving && !copyOn) islandGuide.update(dt, elapsed);
     if (architectCave) {
       architectCave.update(dt); RENDER_OPTS.cameraFeeds = architectCave.active ? architectCave.renderFeeds : null;
       ARCHITECT_OPTS.viewRoots = architectCave.viewRoots;
     }
     shareDrivenPose();
-    if (!architectCave?.active) timechainIsland.site.view(camera.position);
+    if (!architectCave?.active && !copyOn) timechainIsland.site.view(camera.position);
     const firstPerson = clankerPlay.active ? clankerPlay.firstPerson : pilot.closeMix > 0.8 || pilot.mode === "eye-level";
-    if (repoIsland && !cloudPlaying() && !architectCave?.active) repoIsland.afterCamera(camera, firstPerson);
+    if (repoIsland && !cloudPlaying() && !copyOn && !architectCave?.active) repoIsland.afterCamera(camera, firstPerson);
     updateCombatTotemHover();
     for (let i = 0; i < signDetails.length; i++) {
       const sign = signDetails[i], dx = camera.position.x - sign.x, dy = camera.position.y - sign.y, dz = camera.position.z - sign.z;
@@ -8392,6 +8627,7 @@
       RENDER_OPTS.cutawayFade = RENDER_OPTS.cutawayRockMix = RENDER_OPTS.cutawayRegionCount = 0;
       if (cloudPlaying()) cloudMask();
     }
+    copyMask();
     updateAreaLabel();
     if (POSITION_DEBUG && elapsed >= positionDebugNext) {
       positionDebugNext = elapsed + 0.1;
@@ -8408,9 +8644,9 @@
       factoryMouth.roofEffectsActive = effectsActiveAt(r.x, r.y, r.z, factoryMouth.roofEffectsActive, 24, 32);
       factoryMouth.roofWindow.update(dt, camera, RENDER_OPTS, factoryMouth.roofEffectsActive);
     }
-    if (bifrostIsle) updateBifrostWindow(dt);
+    if (bifrostIsle && !copyOn) updateBifrostWindow(dt);
     updateMatrixControl(dt, player);
-    mirrorCave.body.update(dt);
+    if (!copyOn) mirrorCave.body.update(dt);
     entropyLab.phase.body.update(dt);
     entropyLab.phase.body.time = entropyLab.phase.ripples.time;
     for (const veil of caveVeils) {
@@ -8894,8 +9130,9 @@
   };
   // The level the driven body stands at, against nothing but where it is: its zone never changes what it hears.
   const shareBlend = (driven, gorilla, zone) => {
-    // The Observatory shares no acoustic level with the island above it.
-    if (zone === "mirror") { BL.net.setBlend(null, 0); return; }
+    // The Observatory shares no acoustic level with the island above it, and a chat's copy none at all: there every
+    // speaker is heard at full, wherever their Ooga stands.
+    if (zone === "mirror" || copyOn) { BL.net.setBlend(null, 0); return; }
     const p = driven.root.position, feet = p.y - (gorilla ? 0 : driven.baseY);
     if (levelOf(p.x, feet, p.z, zone, LEVEL_AT)) BL.net.setBlend(LEVEL_AT.to, LEVEL_AT.t);
     else BL.net.setBlend(null, 0);
@@ -8997,7 +9234,7 @@
   // One solid mask spans both islands, the dais and fruit contact. A cheap extent check keeps the
   // Mempool grid out of the HUB's per-pixel rock texture pass.
   const cameraPoolNear = (x, z) => {
-    if (cloudPlaying()) return false;
+    if (cloudPlaying() || copyOn) return false;
     const dx = x - mempoolIsland.place.x, dz = z - mempoolIsland.place.z, reach = poolModels.SITE.reach + 1;
     return dx * dx + dz * dz < reach * reach;
   };
@@ -9006,7 +9243,7 @@
     || !island.clearAt(x, y, z, 1e-5, 2e-5) || !entranceSegmentClear(x, y, z, x, y, z, 1e-5);
   const cameraRockMaterialAt = (x, y, z) => cameraPlatformAt(x, y, z) ? altar.slab.geometry.faces[0].color
     : cameraPoolNear(x, z) ? mempoolIsland.rockMaterialAt(x, y, z) || island.rockMaterialAt(x, y, z) : island.rockMaterialAt(x, y, z);
-  const cameraCutRockAt = (x, y, z) => y <= RENDER_OPTS.cutawayMaxY && mempoolIsland.solidAt(x, y, z);
+  const cameraCutRockAt = (x, y, z) => !copyOn && y <= RENDER_OPTS.cutawayMaxY && mempoolIsland.solidAt(x, y, z);
   const bananaLightVisibleAt = (x, y, z, lx, ly, lz) => {
     const reach = RENDER_OPTS.shadowExtent * 3, toX = x + lx * reach, toY = y + ly * reach, toZ = z + lz * reach;
     return island.sightClearAt(x, y, z, toX, toY, toZ) && solids.segmentClear(x, y, z, toX, toY, toZ, 0, 1e-5)
@@ -11271,6 +11508,7 @@
     bindArcadeEntrance(ctx);
     BL.players.setDoors(doorToward);
     BL.players.setCloudSpot(cloudSpotOf);
+    BL.chatCopy.attach(copyHooks);
     spotPlace = ctx.place || "";
     const donate = ctx.place === "donate", routedPlace = donate || ctx.place === "cloud-hopper-return" ? null : ctx.place;
     const bifrostCrossing = ctx.from === "bifrost" ? world.bifrostCrossing : null;
@@ -11585,6 +11823,7 @@
     }).filter(Boolean);
     buildRim();
     cloudNodeStart = root.children.length;
+    const islandLamps = lamps.length;
     mempoolIsland = yield* buildMempoolIsland(slice);
     yield* pause(slice);
     timechainIsland = yield* buildTimechainIsland(slice);
@@ -11592,6 +11831,10 @@
     yield* pause(slice);
     repoIsland = yield* buildRepoIsland(slice);
     cloudRememberNodes(cloudNodeStart);
+    // A chat's copy keeps the main island alone: these islands and their bridges go, with their lamps but ₿IFRÖST's arch's,
+    // which stands on the main island over the north pass.
+    for (let i = cloudNodeStart; i < root.children.length; i++) copyOffMap.push(root.children[i]);
+    for (let i = islandLamps; i < lamps.length; i++) if (!archLamp || lamps[i].node !== archLamp.node) lamps[i].copyOff = true;
     const firePos = buildFire();
     yield* pause(slice);
     fire = lamps[lamps.length - 1];
@@ -11616,6 +11859,7 @@
       });
       addChild(root, jumbotron.node);
       placed.push(jumbotron.node);
+      copyOffMap.push(jumbotron.node);
       addProp("jumbotron", jumbotron.node, jx, jz, 3.8).pickRay = ray => jumbotron.pickRay(ray);
       hud.restoreBoards(jumbotronBoard);
       // Live stats land on the board and on the roster: fresh last-seen
@@ -11680,7 +11924,7 @@
     shared.onJump = cave => cloudHopper?.onJump(cave);
     // Space with both jumps spent: Cloud Hopper's sky feather, when one is held.
     shared.spentJump = cave => !!cloudHopper?.updraft(cave);
-    shared.npcPaused = cloudPlaying;
+    shared.npcPaused = () => cloudPlaying() || copyOn;
     shared.tickerVisible = donationTickerVisible;
     shared.abyssAt = (x, z, y, actor) => !cloudHopper?.active && abyssAt(x, z, y, actor);
     shared.animationInterval = animationInterval;
@@ -11792,6 +12036,7 @@
       b.heimdall = BL.bifrostHeimdall.create({ parent: root, x: h.x, y: h.y, z: h.z, heading: h.heading, fx });
       placed.push(b.heimdall.root, b.heimdall.plinth);
       cloudOffMap.push(b.heimdall.root, b.heimdall.plinth);
+      copyOffMap.push(b.heimdall.root, b.heimdall.plinth);
       solids.add(b.heimdall.plinth);
       addProp("heimdall", b.heimdall.pick, h.x, h.z, 1.2).weaponType = "none";
     }
@@ -11806,7 +12051,7 @@
       || absorbCaveVeil(ax, ay, az, point, dt)
       || !!(factoryMouth && factoryMouth.phase.absorb(ax, ay, az, point, dt))
       || !!(bcaMouth && bcaMouth.phase.absorb(ax, ay, az, point, dt))
-      || !!(bifrostIsle && bifrostIsle.phase.absorb(ax, ay, az, point, dt))
+      || !!(bifrostIsle && !copyOn && bifrostIsle.phase.absorb(ax, ay, az, point, dt))
       || !!(workShot && source && shared.workSites[source.work.site]?.mirrorRoom
         && mirrorCave.ripples.absorb(ax, ay, az, point));
     shared.onProjectileMove = (ax, ay, az, bx, by, bz, dt) => mirrorCave.ripples.cross(ax, ay, az, bx, by, bz, dt);
@@ -12395,6 +12640,7 @@
     bindArcadeEntrance(ctx);
     BL.players.setDoors(doorToward);
     BL.players.setCloudSpot(cloudSpotOf);
+    BL.chatCopy.attach(copyHooks);
     const initialFirstPerson = ctx.from === null && preloadedFirstPerson && !initialGorilla;
     if (initialFirstPerson) pilot.enterClose(true);
     // The /donate route: the island's own view with the donation popup open. As a routed place it keeps Tess from
@@ -12459,6 +12705,9 @@
       root, camera, input,
       debug: {
         setGameMode, delayGameRing, animationInterval,
+        // A chat's copy of the island switched on and off by itself, for a check or the scenery bake: no beam, no move
+        // and no Ooga needed (chat-copy.js's trip does the rest).
+        copyMode: (on) => copyMode(!!on),
         get gameMode() { return gameMode; },
         selectDebugGorilla,
         get timechainIsland() { return timechainIsland; },
@@ -12470,6 +12719,16 @@
         get footsteps() { return footsteps; },
         get chalkboardAt() { return chalkboardClearance; },
         slots: pile.slots, drops: pile.drops, core: pile.core, shell: pile.shell, delivery: pile.delivery, spillEffect: pile.spillEffect, cavemen: crew.cavemen, lab: null, hud, demoTip, setPileLevel: pile.setLevel, refreshStates: crew.refreshStates, routineLayout, get islandWorld() { return islandWorld; }, trimPool: fx.trimPool,
+        // A chat's copy (chat-copy.js), for a check: whether it is on, what a step would cross, its seals and benches, a
+        // cloud speaker's seat.
+        copy: { get on() { return copyOn; }, barred: (fromX, fromZ, toX, toZ, y) => crossesSealedCave(fromX, fromZ, toX, toZ, y), get seals() { return copySealNodes.length; },
+          get planes() { return copyPlanes.length; }, get benches() { return copyBenches.map((c) => ({ y: c.node.position.y, bottom: c.node.position.y + BL.scene.boundsOf(c.bench).min[1], bench: c.node.geometry === c.bench, radius: c.radius })); },
+          get treetop() { return cloudTreetop; }, cloudSpot: cloudSpotOf,
+          // What the island view's scenery bake (scripts/island-scene.mjs) carries to Ooga Chat's 3D view: the lamps and
+          // fires it lights by the clock, the lawn, and the clouds as the copy deals them, with their clock and seats.
+          get lamps() { return lamps; }, get fires() { return fireRigs; }, get lawn() { return lawn && lawn.node; },
+          sky: () => ({ clouds, benches: copyBenches, epoch: CLOUD_EPOCH, crossings: CLOUD_CROSSINGS, swing: CLOUD_SWING, seats: thirdsOf }),
+          setClouds: (t) => setClouds(t), mouths: () => CAMERA_OPENINGS.filter((e) => !e.blocked).map((e) => ({ id: e.id, x: e.mouth.x, z: e.mouth.z, floor: e.mouth.floorY, sr: e.sr, cr: e.cr, headquarters: !!e.headquarters })) },
         get shown() {
           return pile.shown;
         },
@@ -12634,6 +12893,10 @@
     pilot.controls.reset(); input.reset(); pilot.setActive(true);
   };
   const leave = (destroy = false) => {
+    // A trip to a chat's copy ends with the visit, silently: the socket goes home and the island is put back.
+    BL.chatCopy.detach();
+    if (copyBeam) { copyBeam.dispose(); copyBeam = null; }
+    copySelfHidden = false;
     bifrostWalk?.reset(); bifrostWalk = null;
     if (arcadeMouth) arcadeMouth.entrance.unbind();
     // Left by Back or Forward, the logo or any other way than a door of its own (which handed its Ooga over and set
@@ -12657,6 +12920,7 @@
     removeChild(root, cloudFinishFruit);
     cloudHopper = cloudIsland = cloudPile = cloudPileSolids = cloudFinishFruit = null;
     cloudOffMap.length = 0; cloudHidden.clear();
+    copyOffMap.length = 0;
     actorTransition.sourceRoot = actorTransition.sourceHead = null;
     factoryWalk.cave = null;
     resetRageThrowMap(false);
@@ -12876,6 +13140,7 @@
     architectCave?.liveGeometry(set);
     if (cloudHopper?.cabinet.frames) for (const geometry of cloudHopper.cabinet.frames) set.add(geometry);
     cloudHopper?.liveGeometry(set);
+    if (copyBeam) copyBeam.liveGeometry(set);
     if (islandGuide) islandGuide.liveGeometry(set);
     mempoolIsland.water.liveGeometry(set);
     pile.liveGeometry(set);
@@ -12930,7 +13195,7 @@
       if (cloudHopper?.active) return true;
       if (timechainIsland && timechainIsland.gate.busy) return true;
       if (factoryWalk.phase || factoryWalk.still > 0) return true;
-      if (pile.inMotion || fx.inMotion || poolEffectsActive && (weather.active || mempoolIsland.water.active) || mirrorCave.ripples.active || mirrorCave.body.active) return true;
+      if (pile.inMotion || fx.inMotion || poolEffectsActive && (weather.active || mempoolIsland.water.active) || !copyOn && (mirrorCave.ripples.active || mirrorCave.body.active)) return true;
       if (!entropyLab.phase.paused && (entropyLab.phase.ripples.active || entropyLab.phase.body.contacts || entropyLab.phase.body.active)) return true;
       for (const veil of caveVeils) {
         const phase = veil.phase;
@@ -13006,6 +13271,8 @@
   hubScene.navigationReturn = () => pilot?.endLook();
   hubScene.navigationStatus = name => {
     if (!hubScene.navigationReady) return "Finish the current interaction first.";
+    // A chat's copy keeps the main island alone, HQ and its basement open under it.
+    if (copyOn && (name === "mempool" || name === "repos" || name === "timechain" || name === "bifrost")) return COPY_SEALED;
     return clankerPlay?.active ? clankerPlay.travelRefusal() : "";
   };
   const MAP_ZONES = { pile: "outside", gate: "outside", lab: "lab", mirror: "mirror", factory: "factory.hall", arcade: "arcade.hall", bca: "bca", underground: "hq", basement: "hq", mempool: "rainforest", bifrost: "bifrost.chamber", timechain: "sphere", repos: "repos" };
