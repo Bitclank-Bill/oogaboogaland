@@ -38,7 +38,7 @@ A kind, in `games.js`:
 | `limits` | `sockets` an instance takes, `chars` a message may be |
 | `buckets`, `bucketOf(t)` | each message type's token bucket (`rate` a second, `burst`) |
 | `parse(message)` | a page's message as the kind reads it: false closes the socket, null ignores the message |
-| `create(now, env)` | one instance's game (`env`, the Worker's bindings, for a kind that reads a feed): `join`, `leave`, `message` (true when the state should go out now), `step(now)` (true on a change), `running`, `state`, `motion(frame, now)`, `save` (null once it has run down), `restore(data, now)` |
+| `create(now, env)` | one instance's game (`env`, the Worker's bindings, for a kind that reads a feed): `join`, `leave`, `message` (true when the state should go out now), `step(now)` (true on a change), `running`, `state`, `motion(frame, now)`, `save` (null once it has run down), `restore(data, now)`, and optionally `nextTickIn(now)` (ms to its next tick, in place of `tickMs`; at most two ticks) |
 
 ## The route
 
@@ -63,7 +63,9 @@ A kind, in `games.js`:
 - **Messages.** A page sends JSON text of at most `limits.chars`. Anything else, or anything `parse` refuses, closes
   the socket with 4400. Each message type spends its own bucket (protocol.js `takeToken`).
 - **The tick.** A setTimeout chain runs only while the game says it runs, at most four of its fixed steps a call. An
-  idle instance has no timer and hibernates, billed only while awake.
+  idle instance has no timer and hibernates, billed only while awake. It comes every `tickMs`, unless the game asks
+  for its next one (`nextTickIn`): the island's world does, so each frame goes out just as its world finishes a step;
+  the ghost hunt does not, and ticks as it always has.
 - **What goes out.** Every tick sends the motion frame. The whole state (`{ t: "state", now, s }`) goes every
   `stateEvery` ticks and at once on a change; a page joining gets `welcome { you, kind, now, tickMs }` and the state
   at once.
@@ -153,6 +155,23 @@ Each landed round goes back in the next motion frame's confirmations.
 **What stays the page's own.** The server checks movement only for plausibility, so a page could still lie about
 where its player stands. The page also decides how far its round went before scenery stopped it: the server keeps
 that length only for aiming the monkeys and tests the round's whole reach, through the totems too.
+
+## Valhodl (the Byzantine Keep)
+
+`worker/src/games/keep.js` hosts a land rather than a match: kind `keep` at the venue `keep`, one object
+(`keep:keep:v1`) holding Valhodl's (the Byzantine Keep's) quest state. It runs `src/js/keep-rules.js` unchanged.
+
+- **Messages.** `act { id, part }` works one part of a puzzle; `here` says a page is still in the land, once a minute.
+- **No tick.** `running` is always false, so the object has no timer: it wakes for a message and sleeps again.
+- **What is kept.** While anything has been touched, each change and each `here` saves the rules' snapshot, so the
+  land keeps its open passages while anyone is there and for `RESUME_MS` after the last has gone. `here` also sends
+  the state round again, which puts a page right after the object restarted under it. The record names no account.
+- **One link for the whole land.** The yard and the keep's halls share the page's link to the object
+  (scene-keep.js `BL.keepLink`): it stays open across the switch between them and both send `here`, so what has
+  been opened is kept however long a visitor stays inside.
+- **What stays on the room.** Presence, poses and voice, as for every scene. The land is far bigger than the room's
+  ±160 m bound on a position, so each pose is sent from the middle of the area it is in, under that area's zone
+  (zone-map.js `FRAME_SETS`).
 
 ## Cost
 

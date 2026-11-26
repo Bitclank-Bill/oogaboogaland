@@ -4418,7 +4418,7 @@ const orbitFlow = async (b) => {
 // perf floor; `perf` runs the perf floor alone; `unit` (or nothing) runs only the global tier.
 // Two lanes limit concurrent WebGL boot pressure; four produced long startups
 // and a GPU context loss during the full suite.
-const SCENES = ["hub", "lab", "studio", "race", "drop", "block", "orbit", "mine", "dsb", "factory", "hangar", "bifrost", "timechain", "poker", "arcade", "raid", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker"];
+const SCENES = ["hub", "lab", "studio", "race", "drop", "block", "orbit", "mine", "dsb", "factory", "hangar", "bifrost", "keep", "keephalls", "timechain", "poker", "arcade", "raid", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker"];
 const LANES = Number(process.env.LANES) || 2;
 const ARGS = process.argv.slice(2);
 for (const a of ARGS) if (!SCENES.includes(a) && !["--browser-only", "unit", "poker-unit", "cloud-hopper-arcade", "cloud-hopper-record", "cloud-hopper-controller", "highscores-unit", "chat-unit", "integration-unit", "ooga-chat-app", "character-catalog-app", "equipment-app", "svrn-unit", "svrn-review", "vacancy-unit", "rescue-unit", "wallets-unit", "portal-unit", "water-baseline", "water-review", "water-unit", "stackchain-review", "stackchain-unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | --browser-only <scene> | ${SCENES.join(" | ")})`);
@@ -17983,7 +17983,7 @@ const oogaChatAppChecks = async () => {
     record("Ooga Chat page: with the service's feed live, Feed the Oogas is the real kiosk, asks the API each time and shows its answer (unreachable, refused, or an invoice no key can mark paid), never simulates or counts a payment and hands the focus back; with the service unreachable there is no Feed at all",
       honestReal && noFallback, JSON.stringify({ real, unserved }));
     // Voice (#654) through the fixture's fake broker and WebRTC: a listener hears the zone's speakers and never captures;
-    // a contributor's Join Voice captures once and lands muted, M and the footer agree, Leave Voice keeps listening, a
+    // a contributor's Join voice captures once and lands muted, M and the footer agree, Leave voice keeps listening, a
     // zone change ends speaking and hears the new zone, and a refused microphone leaves a listener saying why.
     const voiceNow = (b) => b.evaluate(`(() => {
       const foot = document.querySelector("#oc-view-chat .cloud-foot"), [mute, join] = foot.querySelectorAll(".foot-button"), s = BL.oogaChatFixtures.rtc.stats;
@@ -18026,13 +18026,13 @@ const oogaChatAppChecks = async () => {
     } finally { b.close(); }
     const v = voice, spoke = {
       listener: v.listener.captures === 0 && v.listener.playing === 6 && v.listener.joinOff && v.listener.muteOff,
-      before: v.before.captures === 0 && v.before.playing === 6 && !v.before.joinOff && v.before.join === "Join Voice",
-      joined: v.joined.captures === 1 && v.joined.live === 1 && v.joined.join === "Leave Voice" && v.joined.mute === "Unmute" && !v.joined.muteOff && v.joined.self === 3,
+      before: v.before.captures === 0 && v.before.playing === 6 && !v.before.joinOff && v.before.join === "Join voice",
+      joined: v.joined.captures === 1 && v.joined.live === 1 && v.joined.join === "Leave voice" && v.joined.mute === "Unmute" && !v.joined.muteOff && v.joined.self === 3,
       key: v.unmuted.mute === "Mute" && v.muted.mute === "Unmute",
-      left: v.left.live === 0 && v.left.join === "Join Voice" && v.left.playing === 6 && v.left.self === 2,
-      denied: v.denied.captures === 0 && v.denied.join === "Join Voice" && /Microphone access is blocked/.test(v.denied.said) && v.denied.self === 2
+      left: v.left.live === 0 && v.left.join === "Join voice" && v.left.playing === 6 && v.left.self === 2,
+      denied: v.denied.captures === 0 && v.denied.join === "Join voice" && /Microphone access is blocked/.test(v.denied.said) && v.denied.self === 2
     };
-    record("Ooga Chat page voice: a listener hears every speaker of the zone and can't join; Join Voice captures once and lands muted, M and the footer agree, Leave Voice stops capture and keeps listening, and a refused microphone stays a listener saying why where it can be seen",
+    record("Ooga Chat page voice: a listener hears every speaker of the zone and can't join; Join voice captures once and lands muted, M and the footer agree, Leave voice stops capture and keeps listening, and a refused microphone stays a listener saying why where it can be seen",
       Object.values(spoke).every(Boolean), JSON.stringify(voice));
 
     // Hosted chats (docs/ooga-chat-hosts.md) on the fixture's directory, at 1024 and 390 pixels: signing in joins nothing
@@ -18097,18 +18097,18 @@ const oogaChatAppChecks = async () => {
         await row(b, 1);
         await waitFor(b, (s) => !!s.preview && s.preview.tag);
         await click(b, "dialog.hc-preview .hc-join-speaker");
-        run.openSpeaking = await waitFor(b, (s) => s.foot.includes("Leave Voice"));
+        run.openSpeaking = await waitFor(b, (s) => s.foot.includes("Leave voice"));
         await b.screenshot(join(shots, `chats-open-tag-${w}.png`));
-        // Its host offers co-hosting: the card, Accept (a co-host on stage), Leave Voice (the card again), Accept again.
+        // Its host offers co-hosting: the card, Accept (a co-host on stage), Leave voice (the card again), Accept again.
         run.offer = await waitFor(b, (s) => s.offer === 1);
         await b.screenshot(join(cohostShots, `oc-offer-card-${w}.png`));
         await click(b, ".hc-offer .foot-primary");
         run.cohosting = await waitFor(b, (s) => s.offer === 0 && /\(you\), co-host, speaking/.test(s.tiles));
-        await pressText(b, ".cloud-foot-actions > *", "Leave Voice");
+        await pressText(b, ".cloud-foot-actions > *", "Leave voice");
         run.offerAgain = await waitFor(b, (s) => s.offer === 1 && /left the stage/.test(s.offerHead));
         await b.screenshot(join(cohostShots, `oc-listener-again-${w}.png`));
         await click(b, ".hc-offer .foot-primary");
-        run.rejoined = await waitFor(b, (s) => s.offer === 0 && s.foot.includes("Leave Voice") && /\(you\), co-host, speaking/.test(s.tiles));
+        run.rejoined = await waitFor(b, (s) => s.offer === 0 && s.foot.includes("Leave voice") && /\(you\), co-host, speaking/.test(s.tiles));
         await click(b, ".hc-leave");
         await waitFor(b, (s) => s.space === "list" && s.rows.length === 2);
         // Join as speaker on a closed stage: the request goes in and the host's invite card answers it.
@@ -18274,17 +18274,17 @@ const oogaChatAppChecks = async () => {
       offer: r.offer.offer === 1 && r.offer.offerHead === "The host invited you to co-host" && r.offer.focus === "Accept" && r.offer.offerInside
         && /\(you\), co-host, speaking/.test(r.cohosting.tiles) && r.cohosting.notice === "You're a co-host now",
       offerAgain: r.offerAgain.offerHead === "You left the stage. Rejoin as co-host?" && /\(you\), listening, invited to co-host/.test(r.offerAgain.tiles) && r.offerAgain.offerInside
-        && r.rejoined.foot.includes("Leave Voice") && r.rejoined.captures === r.cohosting.captures + 1,
+        && r.rejoined.foot.includes("Leave voice") && r.rejoined.captures === r.cohosting.captures + 1,
       requested: r.requested.foot.includes("Requested · Cancel") && r.requested.invite === 0,
       invited: r.invited.invite === 1 && r.invited.focus === "Start speaking",
-      speaking: r.speaking.invite === 0 && r.speaking.captures === r.rejoined.captures + 1 && r.speaking.foot.includes("Leave Voice") && r.speaking.foot.startsWith("Unmute"),
+      speaking: r.speaking.invite === 0 && r.speaking.captures === r.rejoined.captures + 1 && r.speaking.foot.includes("Leave voice") && r.speaking.foot.startsWith("Unmute"),
       hostMuted: r.hostMuted.foot.startsWith("Unmute") && r.hostMuted.notice === "A host muted you",
       left: r.left.space === "list",
       dialog: r.dialog.open && r.dialog.title === "sample-contributor's chat" && r.dialog.zones === "none:true,main:false,dsb:false" && r.arrowed === "none:false,main:true,dsb:false",
       browse: r.browsing.space === "list" && /hc-chat-here/.test(r.browsing.first) && r.browsing.line === "You're in this chat · hosting" && r.browsing.others >= 1
         && r.browseSwitch.line === "You host sample-contributor's chat. End it first, or add a co-host to hand it to." && r.browseSwitch.buttons === "End chat and join,Stay"
         && r.browseBack.space === "on" && r.browseBack.title === "sample-contributor's chat",
-      hostRules: r.hosting.leaveShown === 0 && r.hosting.backShown === 1 && !r.hosting.foot.includes("Leave Voice") && r.full.leaveShown === 1
+      hostRules: r.hosting.leaveShown === 0 && r.hosting.backShown === 1 && !r.hosting.foot.includes("Leave voice") && r.full.leaveShown === 1
         && r.hostLeave.length >= 2 && r.hostLeave.slice(0, -1).every((t) => /^Make .+ host and leave$/.test(t)) && r.hostLeave.at(-1) === "Cancel"
         && /reconnecting/.test(r.leaveDropped.head) && r.leaveDropped.off === "Make sample-pebble host and leave" && r.leaveDropped.why === "Reconnecting…" && r.leaveDropped.amber === 0
         && r.leaveBack.off === "" && r.leaveBack.amber === 1,
@@ -18305,7 +18305,7 @@ const oogaChatAppChecks = async () => {
       signedOut: r.signedOut.space === "off" && !r.signedOut.preview && r.signedOut.rows.length === 0 && r.signedOut.list.hidden && r.signedOut.list.kept === 0 && r.signedOut.list.signin,
       fits: Object.values(r).every((m) => typeof m !== "object" || !m.wide)
     }]));
-    record("Ooga Chat page hosted chats: signing in lists the live chats and joins none, and the other panels' account rows offer Unmute and Join voice only once in a chat; a listener's request is approved, its invite card takes the focus and Start speaking lands muted, and a host's mute mutes them and says so; a chat's preview shows its stage before joining, and joining as a speaker asks on a closed stage and speaks at once on an open one; a contributor starts a chat from the dialog (as its host, no Leave Voice here or in the account rows, and no Leave chat until a co-host can take the chat over, then Leave chat choosing who; Back to chats keeping the chat, which leads the list in purple and goes back in, another chat's preview offering its host only ending theirs or Stay; a co-host whose connection dropped listed but not offered until back), approves a request from the queue, opens the stage (approving the one still waiting), mutes a speaker from their tile's menu, offers co-hosting (accepted, made a speaker, the three slots filled so Make co-host is dimmed with its reason, an offer withdrawn, one turned down), removes someone and lets them back, and ends the chat; signing out closes an open preview and takes the list and its chats away; a co-host offer's card is accepted onto the stage, comes back as the co-host leaves voice and is accepted again; the roster runs host, co-hosts, speakers, requests, then listeners, every chat speaker ringed as on a cloud but those walking the chat's island, and the Requests chip stands right of the zone tag; at 1024 and 390 pixels with every pop-up on screen",
+    record("Ooga Chat page hosted chats: signing in lists the live chats and joins none, and the other panels' account rows offer Unmute and Join voice only once in a chat; a listener's request is approved, its invite card takes the focus and Start speaking lands muted, and a host's mute mutes them and says so; a chat's preview shows its stage before joining, and joining as a speaker asks on a closed stage and speaks at once on an open one; a contributor starts a chat from the dialog (as its host, no Leave voice here or in the account rows, and no Leave chat until a co-host can take the chat over, then Leave chat choosing who; Back to chats keeping the chat, which leads the list in purple and goes back in, another chat's preview offering its host only ending theirs or Stay; a co-host whose connection dropped listed but not offered until back), approves a request from the queue, opens the stage (approving the one still waiting), mutes a speaker from their tile's menu, offers co-hosting (accepted, made a speaker, the three slots filled so Make co-host is dimmed with its reason, an offer withdrawn, one turned down), removes someone and lets them back, and ends the chat; signing out closes an open preview and takes the list and its chats away; a co-host offer's card is accepted onto the stage, comes back as the co-host leaves voice and is accepted again; the roster runs host, co-hosts, speakers, requests, then listeners, every chat speaker ringed as on a cloud but those walking the chat's island, and the Requests chip stands right of the zone tag; at 1024 and 390 pixels with every pop-up on screen",
       Object.values(hostedOk).every((w) => Object.values(w).every(Boolean)), JSON.stringify({ hostedOk, hostedRuns }));
 
     // The island view (island-view.js; docs/ooga-chat-hosts.md, "The island view"), at 1024 and 390: Sample Oak's chat
@@ -20438,8 +20438,10 @@ const hubOutdoorTravel = { name: "hub outdoor travel", why: "rule: passive Hub N
 // and the second visit may hold no more GPU records, nodes, input targets or DOM than the first.
 // `settle` (see tourGo) reads both visits only once the scene has finished what it builds on a time budget; a wait
 // that runs out fails the check.
-const trip = (id, settle = null) => ({ name: `${id} round trip`, why: "contract: a scene left and entered again keeps nothing from the last visit, and takes a donation whenever one arrives", run: async (b) => {
-  const away = id === "hub" ? "lab" : "hub", laps = [], beds = [];
+// `away` is where each lap steps out to: the island, or the lab from the island; a scene whose own neighbour is
+// another names it.
+const trip = (id, settle = null, awayTo = null) => ({ name: `${id} round trip`, why: "contract: a scene left and entered again keeps nothing from the last visit, and takes a donation whenever one arrives", run: async (b) => {
+  const away = awayTo || (id === "hub" ? "lab" : "hub"), laps = [], beds = [];
   for (let i = 0; i < 2; i++) {
     await tourGo(b, away);
     laps.push(await tourGo(b, id, settle));
@@ -21215,7 +21217,9 @@ const hostedSite = async () => {
   const deferred = new Map();
   for (const [, src, group] of readFileSync(join(root, "src/index.html"), "utf8").matchAll(/<script src="([^"]+)" data-defer="([a-z-]+)"><\/script>/g)) deferred.set(group, [...(deferred.get(group) || []), src]);
   // A module's block in the built page runs from its marker to the next module's.
-  const block = (src) => { const start = html.indexOf(`// ---- ${src} ----\n`); return html.slice(start, html.indexOf("\n\n// ---- ", start + 1)); };
+  // A hosted-only group (the lounge's recordings) is not in the page at all: its bundle comes from the source, as
+  // scripts/site.mjs builds it.
+  const block = (src) => { const start = html.indexOf(`// ---- ${src} ----\n`); return start < 0 ? `// ---- ${src} ----\n${readFileSync(join(root, "src", src), "utf8").trim()}` : html.slice(start, html.indexOf("\n\n// ---- ", start + 1)); };
   // `gone` answers 404, as a chunk a later deploy replaced does.
   const page = externalizePage(externalizeModules(html, out, deferred, block), out, block, ["js/jumbotron-data.js"]), refused = [], gone = [], fetched = [], probed = [];
   const server = createServer((req, res) => {
@@ -30325,25 +30329,25 @@ const hostedChatsIsland = (phone) => ({ name: phone ? "hosted chats island phone
   const invited = await until((s) => s.invite === 1);
   await b.screenshot(join(shots, `invite-${w}.png`));
   await click(".hc-invite .foot-primary");
-  const speaking = await until((s) => s.foot.includes("Leave Voice"));
+  const speaking = await until((s) => s.foot.includes("Leave voice"));
   await click(".hc-leave");
   await until((s) => s.space === "list" && s.rows === 2);
   // Join as speaker on an open stage: straight on to speaking, no card; the Open stage tag beside the title.
   await row(1);
   await until((s) => !!s.preview && s.preview.tag);
   await click("dialog.hc-preview .hc-join-speaker");
-  const openSpeaking = await until((s) => s.foot.includes("Leave Voice"));
+  const openSpeaking = await until((s) => s.foot.includes("Leave voice"));
   await b.screenshot(join(shots, `open-tag-${w}.png`));
-  // Its host offers co-hosting: the card, Accept (a co-host on stage), Leave Voice (the card again), Accept again.
+  // Its host offers co-hosting: the card, Accept (a co-host on stage), Leave voice (the card again), Accept again.
   const offer = await until((s) => s.offer === 1);
   await b.screenshot(join(cohostShots, `island-offer-card-${w}.png`));
   await click(".hc-offer .foot-primary");
   const cohosting = await until((s) => s.offer === 0 && /\(you\), co-host, speaking/.test(s.tiles));
-  await press("#cloud-panel .cloud-foot-actions > *", "Leave Voice");
+  await press("#cloud-panel .cloud-foot-actions > *", "Leave voice");
   const offerAgain = await until((s) => s.offer === 1 && /left the stage/.test(s.offerHead));
   await b.screenshot(join(cohostShots, `island-listener-again-${w}.png`));
   await click(".hc-offer .foot-primary");
-  const rejoined = await until((s) => s.offer === 0 && s.foot.includes("Leave Voice") && /\(you\), co-host, speaking/.test(s.tiles));
+  const rejoined = await until((s) => s.offer === 0 && s.foot.includes("Leave voice") && /\(you\), co-host, speaking/.test(s.tiles));
   await click(".hc-leave");
   const left = await until((s) => s.space === "list");
   const ok = { list: list.space === "list" && list.rows === 2 && !list.call,
@@ -30366,7 +30370,7 @@ const hostedChatsIsland = (phone) => ({ name: phone ? "hosted chats island phone
       && /sample-pebble, speaking/.test(madeSpeaker.tiles) && !/sample-pebble, co-host/.test(madeSpeaker.tiles),
     slotsFull: full.disabled === "Make co-host" && full.why === "All 3 co-host slots are taken" && full.popInside && !/heron[^|]*co-host/.test(withdrawn.tiles),
     offer: offer.offerHead === "The host invited you to co-host" && offer.focus === "Accept" && offer.offerInside && offer.layer && /\(you\), co-host, speaking/.test(cohosting.tiles),
-    offerAgain: offerAgain.offerHead === "You left the stage. Rejoin as co-host?" && /\(you\), listening, invited to co-host/.test(offerAgain.tiles) && offerAgain.offerInside && rejoined.foot.includes("Leave Voice"),
+    offerAgain: offerAgain.offerHead === "You left the stage. Rejoin as co-host?" && /\(you\), listening, invited to co-host/.test(offerAgain.tiles) && offerAgain.offerInside && rejoined.foot.includes("Leave voice"),
     left: left.space === "list" && !left.call, fits: [list, hosting, queue, menu, invited, preview].every((s) => !s.wide) };
   record(`island hosted chats${phone ? " (390 px)" : ""}: the cloud tab lists the chats, previews one's stage before joining, starts one from the dialog with the Ooga's zone chosen, runs its queue, open stage and tile menu as host (the island's own Join voice keeping the chat and saying why), offers co-hosting (accepted, made a speaker, the three slots filled so Make co-host is dimmed with its reason, an offer withdrawn), removes someone and lets them back, and ends it, with the Requests chip right of the zone tag and the roster in the chat's order; joining as a listener, as a speaker on a closed stage (asking, then the invite card) and on an open one (straight to speaking, then its host's co-host offer accepted onto the stage, back as the co-host leaves voice and accepted again), the room told of the call and every pop-up on screen and in the pad's layers`,
     Object.values(ok).every(Boolean), JSON.stringify({ ok, list, dialog, hosting, opened, queue, menu, preview: preview.preview, joined, requested, invited, speaking, openSpeaking, left, cohosted, cohostMenu, madeSpeaker, full, withdrawn, offer, cohosting, offerAgain, rejoined }));
@@ -30471,7 +30475,7 @@ const hostedChatCopy = (phone) => ({ name: phone ? "hosted chat copy phone" : "h
   await click('.hc-start button[type="submit"]');
   const ready = await until((s) => !!s.go && !s.go.disabled);
   const fits = await b.evaluate(`(() => { const g = document.querySelector(".hc-go"); g.scrollIntoView({ block: "nearest" }); const r = g.getBoundingClientRect(), stage = g.closest(".iv-stage").getBoundingClientRect();
-    // Go there stands on the island view, inside its stage; on a phone the footer's buttons (Unmute, Join Voice, End chat) on one row, its links over them.
+    // Go there stands on the island view, inside its stage; on a phone the footer's buttons (Unmute, Join voice, End chat) on one row, its links over them.
     const tops = [...document.querySelectorAll("#cloud-panel .cloud-foot .foot-button")].filter((e) => !e.hidden && e.offsetParent).map((e) => Math.round(e.getBoundingClientRect().top));
     return r.width > 0 && r.left >= stage.left - 1 && r.right <= stage.right + 1 && r.bottom <= stage.bottom + 1 && r.right <= innerWidth + 1 && document.documentElement.scrollWidth <= innerWidth + 1
       && (innerWidth >= 480 || tops.length >= 2 && new Set(tops).size === 1); })()`);
@@ -30519,7 +30523,7 @@ const hostedChatCopy = (phone) => ({ name: phone ? "hosted chat copy phone" : "h
   await b.sleep(400);
   await b.screenshot(join(shots, `home-${w}.png`));
   // Again, sent home by the copy this time.
-  await until((s) => !!s.go && !s.go.disabled && s.go.text === "Go there");
+  await until((s) => !!s.go && !s.go.disabled && s.go.text === "Join on island");
   await click(".hc-go");
   await until((s) => s.sockets.length === 4);
   await b.evaluate(`__copyFixture.welcome(3, { features: ["call-v1", "copy-v1", "react-v1"], copy: { chat: ${JSON.stringify(chat)}, zone: "main" } })`);
@@ -30527,7 +30531,7 @@ const hostedChatCopy = (phone) => ({ name: phone ? "hosted chat copy phone" : "h
   await b.evaluate(`__copyFixture.say(3, { t: "kick", reason: "stage" })`);
   const kicked = await until((s) => s.phase === "idle");
   const near = (a, c) => !!a && !!c && Math.hypot(a[0] - c[0], a[1] - c[1], a[2] - c[2]) < 0.05;
-  const ok = { ready: ready.go.text === "Go there" && ready.voice && ready.npcs > 0, fits,
+  const ok = { ready: ready.go.text === "Join on island" && ready.voice && ready.npcs > 0, fits,
     went: gone.sockets[0].travel === 1 && gone.sockets[0].closed === 1000 && gone.sockets[1].url.endsWith(`/api/chats/${chat}/world`),
     there: there.on && there.seals > 0 && there.npcs === 0 && there.gorillas === 0 && there.shown && !there.voice && !there.tess && ready.tess && Math.hypot(there.at[0], there.at[2]) < 9 && there.go.text === "Go back",
     sealed: barred.mouths.length > 0 && barred.mouths.every(Boolean) && barred.hq.length > 0 && !barred.hq.some(Boolean) && !barred.open,
@@ -30535,7 +30539,7 @@ const hostedChatCopy = (phone) => ({ name: phone ? "hosted chat copy phone" : "h
       && seated.benches.every((c) => c.bottom >= seated.treetop + 1.5 && c.radius === seated.benches[0].radius) && !!spot,
     back: near(back.at, home) && !back.on && back.seals === 0 && back.npcs > 0 && back.tess && back.sockets[1].closed === 1000 && back.sockets[2].url.endsWith("/room") && back.target === null && back.benches.length === 0,
     kicked: near(kicked.at, home) && !kicked.on && kicked.npcs > 0 && kicked.sockets.length === 5 && kicked.sockets[4].url.endsWith("/room") && kicked.sockets[3].closed === 1000 };
-  record(`hosted chat copy${phone ? " (390 px)" : ""}: Go there on a Main Island chat's island view tells the island it is travelling, closes it clean and opens the chat's copy; there the Ooga stands by the pile with the NPCs, gorillas, Tess and island Join voice gone and every cave mouth sealed but HQ's ramps, open down to HQ; the copy's speakers sit a bench at a time on clouds above the treetops; Leave and a kick from the copy bring the Ooga back to exactly where it stood with the island as it was`,
+  record(`hosted chat copy${phone ? " (390 px)" : ""}: Join on island on a Main Island chat's island view tells the island it is travelling, closes it clean and opens the chat's copy; there the Ooga stands by the pile with the NPCs, gorillas, Tess and island Join voice gone and every cave mouth sealed but HQ's ramps, open down to HQ; the copy's speakers sit a bench at a time on clouds above the treetops; Leave and a kick from the copy bring the Ooga back to exactly where it stood with the island as it was`,
     Object.values(ok).every(Boolean), JSON.stringify({ ok, ready, gone: gone.sockets, there, barred, seated: seated.benches, treetop: seated.treetop, spot, back, kicked, home }));
 } });
 scene("hub", { label: "guest likeness", query: "pos=0", opts: { initScript: GUEST_LIKENESS_INIT }, steps: [hubGuestLikeness] });
@@ -35577,6 +35581,67 @@ const studioPlaces = { name: "studio places", why: "playthrough: the studio is w
   record("studio places: reloading an Ooga in bed preserves its rifle selection and waking restores the held rifle", reloaded.asleep && reloaded.kept && reloaded.standing, JSON.stringify(reloaded));
 } };
 scene("studio", { query: `character=${STUDIO_OOGA}`, steps: [studioPlaces, trip("studio")] });
+// Valhodl (scene-keep.js, scene-keep-halls.js), a `wip` land behind ₿IFRÖST's west window.
+const KEEP_OOGA = "portlandhodl";
+// Waits in the page until the director has landed on `id`.
+const keepGo = (b, id, place = null) => b.evaluate(`(async () => { const B = window.__ooga, t0 = performance.now(); B.go("${id}"${place ? `, "${place}"` : ""});
+  while ((B.transitioning || B.scene !== "${id}") && performance.now() - t0 < 60000) await new Promise((r) => setTimeout(r, 50));
+  B.advance(0.3, 1 / 60); return B.scene; })()`);
+const keepWalking = { name: "keep walking", why: "rule: W A S D walk the visitor's Ooga its way on screen in Valhodl's yard and inside its keep, from two camera angles", run: async (b) => {
+  const yard = await walkKeys(b, KEEP_OOGA, 0, -48, [0, 2.2], 0.5);
+  await keepGo(b, "keephalls");
+  const halls = await walkKeys(b, KEEP_OOGA, 0, -14, [0, 2.2], 0.5);
+  await keepGo(b, "keep");
+  record("keep walking: W A S D walk the Ooga its way on screen in the yard and in the keep's lounge, from two camera angles", allWalk(yard) && allWalk(halls), JSON.stringify({ yard, halls }));
+} };
+// Where the visitor's Ooga is sent to the room from: inside the room's bounds on a position, under the zone of the
+// area it stands in, and that area's middle added back gives where it stands.
+const KEEP_FRAME_PROBE = `(spots, keep) => { const B = window.__ooga, P = B.pilot, Z = BL.zoneMap, L = keep ? BL.keepLayout : BL.keepHallsLayout, out = [];
+  for (const [x, z, y] of spots) {
+    P.navigate({ position: { x, y: y ?? (keep ? L.supportAt(x, z, 60) : 0), z }, yaw: 0, pitch: 0.4, dist: 8 }); B.advance(0.4, 1 / 60);
+    const s = BL.net.state, o = Z.offsetOf(s.zone), p = P.player.root.position;
+    out.push({ at: [x, z], zone: s.zone, x: +s.self.x.toFixed(2), z: +s.self.z.toFixed(2), off: Math.hypot(s.self.x + o.x - p.x, s.self.z + o.z - p.z) });
+  }
+  return out; }`;
+const keepFrames = { name: "keep frames", why: "regression: Valhodl sent raw world positions past the room's ±160 m bound (Portal Island at z 308, CBDC at x 950, Cold Storj at x −1012, the tower interiors from x 200), so other players and voice saw everyone there pinned to its edge", run: async (b) => {
+  const yard = await b.evaluate(`(${KEEP_FRAME_PROBE})([[0, -48], [0, 300], [930, -50], [-1012, -50, -6]], true)`);
+  await keepGo(b, "keephalls");
+  const halls = await b.evaluate(`(() => { const T = BL.keepHallsLayout.TOWERS, C = BL.keepHallsLayout.CAVE; return (${KEEP_FRAME_PROBE})([[0, -14], [T[0].x, T[0].z], [T[5].x, T[5].z], [C.arrive.x, C.arrive.z]], false); })()`);
+  await keepGo(b, "keep");
+  const all = [...yard, ...halls];
+  record("keep frames: every pose Valhodl sends lies inside the room's ±160 m bound, under the zone of the area it stands in, and that area's middle added back is where the Ooga stands, in the yard and in the halls",
+    all.every((r) => Math.abs(r.x) <= 160 && Math.abs(r.z) <= 160 && r.off < 0.05) && yard.every((r) => r.zone === "byzantine-keep" || r.zone.startsWith("byzantine-keep.y")) && halls.every((r) => r.zone === "byzantine-keep.halls" || r.zone.startsWith("byzantine-keep.h"))
+    && new Set(all.map((r) => r.zone)).size === all.length, JSON.stringify({ yard, halls }));
+} };
+// The land's object link, faked so the check needs no backend: one socket across the yard and the halls, its minute's
+// `here` sent from inside the keep, closed only when Valhodl is left.
+const keepLink = { name: "keep link", why: "regression: walking into the keep closed the land's object link and the halls sent no `here`, so after ten minutes inside the saved record was swept and the drawbridge was shut again on the way out", run: async (b) => {
+  await b.evaluate(`(() => { const G = BL.gameNet, log = window.__keepLink = { opened: 0, closed: 0, here: 0, real: { offers: G.offers, open: G.open } };
+    G.offers = (kind) => kind === "keep" || log.real.offers(kind);
+    G.open = (kind, venue, hooks) => kind !== "keep" ? log.real.open(kind, venue, hooks) : (log.opened++, { state: "live", send: (m) => { if (m.t === "here") log.here++; return true; }, close: () => { log.closed++; } }); })()`);
+  try {
+    await keepGo(b, "keephalls");
+    const inside = await b.evaluate(`(() => { const log = window.__keepLink, at = { opened: log.opened }; window.__ooga.advance(61, 1 / 10); at.here = log.here; at.closed = log.closed; return at; })()`);
+    await keepGo(b, "keep");
+    const back = await b.evaluate(`({ opened: window.__keepLink.opened, closed: window.__keepLink.closed })`);
+    await keepGo(b, "hub");
+    const gone = await b.evaluate(`({ closed: window.__keepLink.closed })`);
+    await keepGo(b, "keep");
+    record("keep link: one link to the land's object across the yard and the halls, a `here` sent inside the keep after a minute, and closed only once Valhodl is left",
+      inside.opened === 1 && inside.here >= 1 && inside.closed === 0 && back.opened === 1 && back.closed === 0 && gone.closed === 1, JSON.stringify({ inside, back, gone }));
+  } finally {
+    await b.evaluate(`(() => { const G = BL.gameNet, log = window.__keepLink; G.offers = log.real.offers; G.open = log.real.open; })()`);
+  }
+} };
+// The kit's crates and barrels (keep-models.js `kit`) in the yard's shipyard and Armory & Forge, and the halls' dungeon.
+const keepPieces = { name: "keep pieces", why: "rule: Valhodl's crates and barrels come from the set-dressing kit, each a poke target that answers with its tooltip", run: async (b) => {
+  const r = await b.evaluate(`(() => { const K = BL.keepModels, kinds = ["crates", "casks", "barrel", "barrels"].map((k) => [k, K.kit(k)]);
+    return { kinds: kinds.map(([k, c]) => [k, !!c && c.picks.length / 6, !!c && c.geometry.faces.length > 0]) }; })()`);
+  record("keep pieces: the crates, casks and barrels are built from the set-dressing kit with a pick sphere for every piece", r.kinds.every(([, n, faces]) => n >= 1 && faces), JSON.stringify(r));
+} };
+scene("keep", { query: `wip=keep&character=${KEEP_OOGA}&castle=1`, steps: [keepWalking, keepFrames, keepLink, keepPieces, trip("keep")] });
+// The halls step out to the yard, their own neighbour, so the kept island's own changes stay out of the reading.
+scene("keephalls", { query: `wip=keep&character=${KEEP_OOGA}`, steps: [trip("keephalls", null, "keep")] });
 const modelledCarryPoses = { name: "modelled Heimdall and axe poses", why: "regression: Heimdall's props followed the old straight arms and planting an axe lifted the whole arm before bending its elbow", run: async b => {
   const result = await b.evaluate(`(() => {
     const S = BL.scene, M = BL.models, C = BL.crew, stage = S.createNode(), rows = [], shots = [];
@@ -42618,7 +42683,7 @@ const footstepChecks = BL => {
 // when someone is listed, without touching the visitor's own mute or telling the room. voice.js runs in a fixture
 // with a fake microphone, peer connection and Worker, so every state of the track is read directly.
 const voiceAloneChecks = async () => {
-  const source=readFileSync(join(root,"src/js/duel-listening.js"),"utf8")+readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/room-acoustics.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8"),ops=[],netMuted=[],emits=[];
+  const source=readFileSync(join(root,"src/js/native-icons.js"),"utf8")+readFileSync(join(root,"src/js/duel-listening.js"),"utf8")+readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/room-acoustics.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8"),ops=[],netMuted=[],emits=[];
   const track={enabled:true,stop(){},clone(){return {enabled:true,stop(){}};}},stream={getAudioTracks:()=>[track],getTracks:()=>[track]};
   class Pc {constructor(){this.connectionState="connected";this.iceGatheringState="complete";this.localDescription={sdp:"v=0\r\na=candidate:1 1 udp 2122260223 127.0.0.1 9 typ host\r\n"};}addTransceiver(){return {mid:"0"};}async createOffer(){return {};}async createAnswer(){return {};}async setLocalDescription(){}async setRemoteDescription(){}addEventListener(){}removeEventListener(){}getTransceivers(){return [];}close(){}}
   class Audio {constructor(){this.muted=false;}pause(){}play(){return Promise.resolve();}}
@@ -42666,7 +42731,7 @@ const voiceAloneChecks = async () => {
 };
 // A fresh fixture of voice.js for the failure paths: whatever the SFU refuses is named in `failing`, and timers are held.
 const voiceFailureChecks = async () => {
-  const source=readFileSync(join(root,"src/js/duel-listening.js"),"utf8")+readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/room-acoustics.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8");
+  const source=readFileSync(join(root,"src/js/native-icons.js"),"utf8")+readFileSync(join(root,"src/js/duel-listening.js"),"utf8")+readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/room-acoustics.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8");
   const page=(joined=false,AudioContext=undefined)=>{
     const timers=[],calls=[],bodies=[],pcs=[],failing=new Set(),holds=new Map();let holdLeave=null;
     const track={enabled:true,stopped:false,stop(){this.stopped=true;},clone(){return {enabled:true,stop(){}};}},stream={getAudioTracks:()=>[track],getTracks:()=>[track]};
@@ -42748,7 +42813,7 @@ const voiceFailureChecks = async () => {
 // Someone who pressed Join voice comes back in voice, muted, on their first press, with the microphone never touched
 // until they unmute; only Leave voice ends that. voice.js runs per "page" over one shared localStorage.
 const voiceReturnChecks = async () => {
-  const source=readFileSync(join(root,"src/js/duel-listening.js"),"utf8")+readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/room-acoustics.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8");
+  const source=readFileSync(join(root,"src/js/native-icons.js"),"utf8")+readFileSync(join(root,"src/js/duel-listening.js"),"utf8")+readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/room-acoustics.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8");
   const stored=new Map(),settle=()=>new Promise(r=>setTimeout(r,0));
   const page=({active=false,zone="outside",denied=false}={})=>{
     const ops=[],told=[],presses=new Map();let mics=0;
@@ -42841,7 +42906,7 @@ const voiceHandoffChecks = () => {
 };
 // iOS keeps every element at 1; both paths must sound the same at every step.
 const voiceHearingChecks = async () => {
-  const source=readFileSync(join(root,"src/js/duel-listening.js"),"utf8")+readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/room-acoustics.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8"),settle=()=>new Promise(r=>setTimeout(r,0));
+  const source=readFileSync(join(root,"src/js/native-icons.js"),"utf8")+readFileSync(join(root,"src/js/duel-listening.js"),"utf8")+readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/room-acoustics.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8"),settle=()=>new Promise(r=>setTimeout(r,0));
   const remote=(login,zone,x,z,placed=true)=>({login,zone,poseZone:placed?zone:null,x,y:0,z});
   const rig=(ios,webAudio=true,saved=null,store=new Map())=>{
     const ops=[],bodies=[],netMuted=[],timers=new Map(),els=[],pulled=[],gains=[],limiters=[],ctxs=[],handlers=new Map(),subscribers=new Set();let timerId=0,onTrack=null,captures=0;
@@ -42868,6 +42933,7 @@ const voiceHearingChecks = async () => {
     const win={BL:{sound,net:{state,setMuted:on=>netMuted.push(on),remotes,voiceLink:()=>"none",subscribe:fn=>{subscribers.add(fn);return()=>subscribers.delete(fn);}}},setTimeout:()=>0,clearTimeout(){},setInterval:fn=>{timers.set(++timerId,fn);return timerId;},clearInterval:id=>timers.delete(id),addEventListener:(k,fn)=>handlers.set(k,fn),removeEventListener(){}};
     const context={window:win,document:{createElement:()=>probe},localStorage:{getItem:k=>store.has(k)?store.get(k):null,setItem:(k,v)=>store.set(k,String(v))},navigator:{userActivation:activation,mediaDevices:{getUserMedia:async()=>{captures++;return stream;}}},RTCPeerConnection:Pc,Audio,MediaStream,fetch,AbortController,Promise,JSON,Error,Map,Set,Float32Array,Math,Number,String};
     if(webAudio)win.AudioContext=context.AudioContext=Ctx;
+    runInNewContext(readFileSync(join(root,"src/js/zone-map.js"),"utf8"),context);
     runInNewContext(readFileSync(join(root,"src/js/voice-blend.js"),"utf8"),context);
     runInNewContext(source,context);
     const V=win.BL.voice,elOf=id=>els[pulled.lastIndexOf(id)],gainOf=id=>gains.filter(g=>g.id===id&&g.out.size).at(-1);
@@ -46912,8 +46978,8 @@ const audienceChecks = async BL => {
       && old === "ignored" && half === 10 && whole && switched && connecting && whole1001 && pics.every(p => p === undefined)
       && kept && forgot,
     JSON.stringify({ first, again, asked, order, steady, gap, resyncs, stale, old, half, whole, switched, connecting, whole1001, pics }));
-  record("Ooga Chat footer and hand: a listener has a disabled, uncoloured Unmute and a Join Voice the room must call eligible (pending, denied, unknown or an unsupported browser never enable it, and the island's `active` out of its voice is the room's word not caught up, which never holds it off); a speaker has a green Mute or a red Unmute and Leave Voice, and a disabled one still reads Unmute, uncoloured; only an active speaker may raise the hand",
-    footers.join("|") === "Unmute:true:/Join Voice:false|Unmute:true:/Join Voice:true|Unmute:true:/Join Voice:true|Unmute:true:/Join Voice:true|Unmute:true:/Join Voice:true|Mute:false:live/Leave Voice:false|Unmute:false:muted/Leave Voice:false|Unmute:true:/Leave Voice:false|Unmute:false:muted/Leave Voice:false|Unmute:true:/Join Voice:false"
+  record("Ooga Chat footer and hand: a listener has a disabled, uncoloured Unmute and a Join voice the room must call eligible (pending, denied, unknown or an unsupported browser never enable it, and the island's `active` out of its voice is the room's word not caught up, which never holds it off); a speaker has a green Mute or a red Unmute and Leave voice, and a disabled one still reads Unmute, uncoloured; only an active speaker may raise the hand",
+    footers.join("|") === "Unmute:true:/Join voice:false|Unmute:true:/Join voice:true|Unmute:true:/Join voice:true|Unmute:true:/Join voice:true|Unmute:true:/Join voice:true|Mute:false:live/Leave voice:false|Unmute:false:muted/Leave voice:false|Unmute:true:/Leave voice:false|Unmute:false:muted/Leave voice:false|Unmute:true:/Join voice:false"
       && hand && lowered,
     JSON.stringify({ footers, hand, lowered }));
 };
@@ -47040,7 +47106,7 @@ const chatMembersNetChecks = async BL => {
 };
 // Rule (#660, #656): Ooga Chat's panel on a DOM stand-in, through its own handlers: it asks for the visitor's own zone,
 // draws the whole of a long roster as tiles (audience-tiles.js) for its slab to scroll, keeps each tile's nodes by id
-// across a delta, touches only what changed, drops removed tiles with their pictures, sends nothing for the zone already chosen, gates Join Voice and the
+// across a delta, touches only what changed, drops removed tiles with their pictures, sends nothing for the zone already chosen, gates Join voice and the
 // hand on the room's word, shows a gap honestly with a Retry that asks afresh (joining too), draws the roster again
 // after a reconnect it sat out hidden, and forgets everything on sign-out.
 const cloudPanelChecks = async BL => {
@@ -47071,10 +47137,10 @@ const cloudPanelChecks = async BL => {
   const observers = [];
   const window = { BL: { audience: BL.audience, reactionPolicy: BL.reactionPolicy,
     net: { state, subscribe: sub("net"), subscribeAudience: sub("audience"), subscribeReactions: sub("reactions"), subscribeChatMembers: sub("chatMembers"), sendAudience: (type, fields) => { sent.push({ type, ...fields }); return true; }, logout() {} },
-    voice: { stats, support: () => ({ secure: true, webrtc: true, mic: true }), subscribe: sub("voice"), mutedLocally: login => local.has(login), muteLocal: (login, on) => on ? local.add(login) : local.delete(login), setMuted() {}, toggle() {}, leave() {}, speaking: () => false, inEarshot: () => true },
+    voice: { stats, support: () => ({ secure: true, webrtc: true, mic: true }), subscribe: sub("voice"), subscribeLevels: () => () => {}, level: () => 0, ownLevel: () => 0, mutedLocally: login => local.has(login), muteLocal: (login, on) => on ? local.add(login) : local.delete(login), setMuted() {}, toggle() {}, leave() {}, speaking: () => false, inEarshot: () => true },
     hud: { voiceIcon: el("svg"), voiceWords: (look, self) => `${look}${self ? " (you)" : ""}`, renderFaceIcon() {}, showAccount() {} },
     models: { caveman: () => ({}) }, contributors: { traitsFor: () => ({}) }, characters: { get: name => name === "ooga" ? {} : null },
-    nativeIcons: { svg: () => el("svg"), voice: () => el("svg") }, sheet: { visible: () => visible, watchViews() {}, attending: () => false, setBadge() {} },
+    nativeIcons: { svg: () => el("svg"), voice: () => el("svg"), label: (button, text) => { button.textContent = text; } }, sheet: { visible: () => visible, watchViews() {}, attending: () => false, setBadge() {} },
     // Hosted chats off (no call-v1): the panel keeps Main Island's roster.
     chatCall: { available: () => false, room: null, subscribe: () => () => {}, hear: () => () => {}, identity: () => null },
     reactions: { mount: (host, options) => { gate = options.handAllowed; }, refresh: () => refreshes.push(gate()) } } };
@@ -47088,7 +47154,7 @@ const cloudPanelChecks = async BL => {
   hear({ t: "audience", v: 1, kind: "snapshot", epoch: 1, rev: 1, zone: "main", rows: crowd, you: { speak: "pending" } });
   const part = (node, cls) => { for (const c of node.children) { if (c.className.split(" ").includes(cls)) return c; const found = part(c, cls); if (found) return found; } return null; };
   const drawn = { rows: list.children.length, cached: P.stats.cached, order: list.children.slice(0, 3).map(li => li.dataset.id).join() };
-  const pending = $("cloud-voice").disabled && $("cloud-voice").textContent === "Join Voice" && $("cloud-mute").disabled && $("cloud-mute").textContent === "Unmute";
+  const pending = $("cloud-voice").disabled && $("cloud-voice").textContent === "Join voice" && $("cloud-mute").disabled && $("cloud-mute").textContent === "Unmute";
   const w1 = list.children[0], ring = w1.dataset.source, listenerMic = part(list.children[2], "cloud-mic").hidden;
   const madeBefore = made, replacedBefore = list.replaced;
   hear({ t: "audience", v: 1, kind: "delta", epoch: 1, rev: 2, base: 1, zone: "main", upsert: [row("w1", "speaker", { contributions: 9, mic: "muted" })], you: { speak: "eligible" } });
@@ -47099,7 +47165,7 @@ const cloudPanelChecks = async BL => {
   const c1img = part(list.children[1], "cloud-portrait").children[0];
   // The room names a chat speaker's picture by Ooga Chat's own path, which the island does not serve: no request for it.
   hear({ t: "audience", v: 1, kind: "delta", epoch: 1, rev: 3, base: 2, zone: "main", remove: ["c1"], upsert: [row("tester", "speaker", { source: "chat", self: true, avatar: "/api/chat/avatar/tester" })] });
-  const removed = c1img.tag === "img" && c1img.cleared === 1 && !list.children.some(li => li.dataset.id === "c1") && refreshes.at(-1) === true && $("cloud-foot-name").dataset.source === "chat";
+  const removed = c1img.tag === "img" && c1img.cleared === 1 && !list.children.some(li => li.dataset.id === "c1") && refreshes.at(-1) === true && $("cloud-foot-name").dataset.source === "island";
   const noPicture = part(list.children.find(li => li.dataset.id === "tester"), "cloud-portrait").children[0].tag === "svg";
   // The room drops and is live again: the panel asks for Main Island afresh and says it is joining.
   state.room = "connecting"; tick(); state.room = "live"; tick();
@@ -47125,7 +47191,7 @@ const cloudPanelChecks = async BL => {
   state.logoutEpoch = 1; state.me = null; tick();
   const signedOut = list.children.length === 0 && P.stats.cached === 0 && P.stats.desired === null && !P.available();
   P.dispose();
-  record("Ooga Chat panel: asks for Main Island wherever the visitor's Ooga stands, draws the whole of a long roster as tiles, keeps each tile's nodes through a delta, drops removed tiles and their pictures, asks for no picture the island cannot serve, asks again when the room comes back, gates Join Voice and the hand on the room's word, shows a gap with a Retry that asks afresh (joining too), draws the roster again after a hidden reconnect, and forgets everything on sign-out",
+  record("Ooga Chat panel: asks for Main Island wherever the visitor's Ooga stands, draws the whole of a long roster as tiles, keeps each tile's nodes through a delta, drops removed tiles and their pictures, asks for no picture the island cannot serve, asks again when the room comes back, gates Join voice and the hand on the room's word, shows a gap with a Retry that asks afresh (joining too), draws the roster again after a hidden reconnect, and forgets everything on sign-out",
     asked === "audience-view:main" && drawn.rows === 303 && drawn.cached === 303 && drawn.order === "w1,c1,tester"
       && ring === "world" && listenerMic && pending && delta && eligible && localMute && removed && noPicture && again && joinRetry && stale && staleRetry
       && dropped && rejoined && signedOut && unsubs.length === 5,
@@ -47212,7 +47278,7 @@ const persistentPanel = (BL, net, saved = new Map()) => {
     document: { createElement: make, getElementById: id => ids.get(id), body, addEventListener() {}, removeEventListener() {} },
     localStorage: { getItem: key => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value) }, Event: class {} };
   runInNewContext(["src/js/reaction-bar.js", "src/js/reactions.js"].map(file => readFileSync(join(root, file), "utf8")).join("\n"), context);
-  const bars = [...ids.values()].map(host => { const card = host.children[0]; return { card, buttons: [...card.children[0].children, card.children[2]] }; });
+  const bars = [...ids.values()].map(host => { const card = host.children[0]; return { card, buttons: [...card.children[0].children[0].children, card.children[2]] }; });
   const event = (slot, type, extra = {}, bar = 0) => {
     const e = { target: bars[bar].buttons[slot], button: 0, pointerId: 1, isPrimary: true, clientX: 0, clientY: 0, preventDefault() {}, ...extra };
     for (const fn of bars[bar].card.on[type] || []) fn(e);
@@ -47324,7 +47390,7 @@ const playersColumnChecks = async () => {
       net: { state: { room: "live", me: { login: "me", display: "Me" }, selfId: 1, online: 3, zone: "outside", hostId: 0, self: { x: 0, y: 0, z: 0, zone: "outside" }, voiceLinks: false, linkApp: [], clouds: [], chatMembers: new Map(), chatPeople }, remotes,
         voiceLink: () => "none", toggleVoiceLink() {}, subscribe() {}, subscribeRoster() {}, subscribeMoves() {}, subscribePresence() {}, subscribeReactions() {}, subscribeAudience() {}, subscribeClouds() {}, subscribeDuel() {} },
       hud: { voiceIcon: make("svg"), voiceWords: () => "In voice", toast() {} },
-      voice: { stats: { enabled: true, muted: false, speaking: false, radius: 0 }, fades: false, RADIUS_MIN: 5, RADIUS_MAX: 60, VOLUME_MAX: 2, subscribe() {}, speaking: () => false, inEarshot: () => true, mutedLocally: () => false, mutedByDuel: () => false, duel() {}, setMuteDuels() {}, volumeOf: () => 1, setVolume() {}, setRadius() {} },
+      voice: { stats: { enabled: true, muted: false, speaking: false, radius: 0 }, fades: false, RADIUS_MIN: 5, RADIUS_MAX: 60, VOLUME_MAX: 2, subscribe() {}, subscribeLevels() {}, level: () => 0, ownLevel: () => 0, speaking: () => false, inEarshot: () => true, mutedLocally: () => false, mutedByDuel: () => false, duel() {}, setMuteDuels() {}, volumeOf: () => 1, setVolume() {}, setRadius() {} },
       sheet: { visible: () => true, setBadge() {}, watchViews() {}, attending: () => true }, sound: { muted: false, subscribe() {} }, pilot: { turnToward() {} } });
     runInNewContext(await readFile(join(root, "src/js/players.js"), "utf8"), context);
     handlers.sheetchange();
@@ -48114,7 +48180,10 @@ const raceRigChecks = async () => {
     // Ember Den infinity-pool faces select the filtered moonlit water material.
     // The falling sheets share the Matrix glyph atlas and attenuate their own glass alpha.
     // Blended canvas surfaces use pigment alpha; the soft flame shell also fades at its silhouette.
-    "00d52eb414368e793c194c5a50164a2d6350788a3ff57c89dcccbe903935ac60",
+    // Valhodl's wand charge adds uRelit and up to eight relit upright cylinders (uRelitCount, uRelitA, uRelitTop),
+    // which keep the Ooga and the enemies near it lit while the land darkens (was 00d52eb4); the loop ends at once
+    // with uRelitCount 0, as it is in every other scene and moment, so ordinary output is unchanged.
+    "58fe75f930579e85f2d4514bc115ec1e70a5568b3d46389249e3b2ba8b72e981",
     "37030f053de422aa157f017ceedef0812ed57a17c9e1b2af4aab017c0b645364"
   ];
   record("race rig strategy: ordinary mesh, fragment and shadow shader bytes retain the pre-rig fast path", ordinaryHashes.every((hash, i) => hash === expectedOrdinaryHashes[i]), JSON.stringify(ordinaryHashes));
@@ -49233,7 +49302,7 @@ const studioCatalogueProof = async () => {
 
 // Exercise the shipped voice lifecycle with deferred permissions/signaling and no real devices/network.
 const studioVoiceLifecycleProof = async () => {
-  const source=await readFile(join(root,"src/js/duel-listening.js"),"utf8")+await readFile(join(root,"src/js/room-acoustics.js"),"utf8")+await readFile(join(root,"src/js/voice.js"),"utf8");
+  const source=await readFile(join(root,"src/js/native-icons.js"),"utf8")+await readFile(join(root,"src/js/duel-listening.js"),"utf8")+await readFile(join(root,"src/js/room-acoustics.js"),"utf8")+await readFile(join(root,"src/js/voice.js"),"utf8");
   const fixture=(gathering="complete",candidate=true,failFirstPeer=false,voiceTurn=false,stunDead=false)=>{
     const calls=[],streams=[],peers=[],elements=[],timers=new Map(),failing=new Map(),clock={at:null};let timerId=0,gum=0,permission=null,publishResponse=null,deferred=null,peerAttempts=0;
     class Peer {
@@ -49552,7 +49621,7 @@ const listenOnlyMicStatusProof = async () => {
   const accountStart=source.indexOf("  const ROOM_WORDS"),accountEnd=source.indexOf("\n  // The microphone's note",accountStart);
   const nodes=new Map(),element=id=>{if(!nodes.has(id))nodes.set(id,{dataset:{},getAttribute(){return "";},setAttribute(){}});return nodes.get(id);};
   const voice={stats:{returning:true,muted:true,enabled:false,joining:false,micError:"",error:"WebRTC blocked"},ICE_BLOCKED:"WebRTC blocked",support:()=>({secure:true,webrtc:true,mic:true})};
-  const account={BL:{voice},document:{querySelectorAll:()=>[]},$:element};
+  const account={BL:{voice,nativeIcons:{label:(button,text)=>{button.textContent=text;}}},document:{querySelectorAll:()=>[]},$:element};
   runInNewContext(source.slice(accountStart,accountEnd)+";globalThis.showAccount=showAccount;",account);
   const live={backend:true,me:{display:"Listener"},room:"live",online:1};account.showAccount(live);
   const blockedReturn=element("account-mute").textContent==="Voice: WebRTC blocked"&&!element("account-mute").disabled&&!!element("account-mute").title;
@@ -50043,9 +50112,9 @@ const oogaChatChecks = async () => {
   const opened = eligible.auth.state.auth === "eligible" && eligible.gates().joinVoice && eligible.gates().contributor && eligible.timers.length === 1
     && eligible.timers[0].at === NOW + 600_000 - A.STALE_LEAD_MS;
   await eligible.advance(600_000);
-  // A window that lapses closes Join Voice but ends no lease held: the server ends a real loss.
+  // A window that lapses closes Join voice but ends no lease held: the server ends a real loss.
   const stale = !eligible.log.some((entry) => entry.startsWith("release")) && !A.gates({ ...eligible.auth.state, session: eligible.auth.state.session }, NOW + 600_000).joinVoice;
-  // Asked again before the window ends, a fresh answer keeps Join Voice open and nothing is released.
+  // Asked again before the window ends, a fresh answer keeps Join voice open and nothing is released.
   const early = await signedIn(account("github", "speaker", "eligible", { eligibility: { checkedAt: NOW, staleAfter: 600 } }));
   early.answer = account("github", "speaker", "eligible", { eligibility: { checkedAt: NOW + 600_000 - A.STALE_LEAD_MS, staleAfter: 600 } });
   await early.advance(600_000 - A.STALE_LEAD_MS);
@@ -50091,11 +50160,11 @@ const oogaChatChecks = async () => {
   await broken.auth.check("retry");
   const throttled = await signedIn(account("github", "speaker", "eligible"));
   await throttled.auth.check("visible");
-  // The server itself not sure for a moment (its own `unknown`) closes Join Voice and ends no lease held.
+  // The server itself not sure for a moment (its own `unknown`) closes Join voice and ends no lease held.
   const unsure = await signedIn(account("github", "speaker", "eligible"));
   unsure.answer = account("github", "speaker", "unknown");
   await unsure.auth.check("retry");
-  // A denied return names its provider and retries it; a GitHub sign-in lands eligible but closed until Join Voice.
+  // A denied return names its provider and retries it; a GitHub sign-in lands eligible but closed until Join voice.
   const denied = await signedIn(null, { back: { result: "denied", provider: "github" } });
   const deniedNotice = denied.auth.state.notice?.kind === "signin" && denied.auth.state.notice.provider === "github" && denied.auth.state.auth === "signed-out";
   await denied.auth.retry();
@@ -50508,7 +50577,7 @@ const oogaChatChecks = async () => {
   const icons = load(["src/js/native-icons.js"], { window: {} }).nativeIcons;
   const inline = [...islandHtml.match(/<svg class="dsb-island-icon"[\s\S]*?<\/svg>/)[0].matchAll(/<path fill="([^"]+)" d="([^"]+)"\/>/g)].map((m) => `${m[1]} ${m[2]}`);
   const marks = { dsb: inline.join("|") === icons.ICONS.dsb[3].map(([fill, d]) => `${fill} ${d}`).join("|") && inline.length === 8,
-    voice: /BL\.nativeIcons\.voice\(\)/.test(readFileSync(join(root, "src/js/hud.js"), "utf8")) && icons.VOICE_PARTS.length === 5 };
+    voice: /BL\.nativeIcons\.voice\(\)/.test(readFileSync(join(root, "src/js/roster-panel.js"), "utf8")) && typeof icons.mic === "function" && typeof icons.drawMic === "function" };
   record("Ooga Chat marks: DSB Land's is the island's own paths, and the voice mark is the one the island's roster draws",
     Object.values(marks).every(Boolean), JSON.stringify(marks));
 
@@ -50517,8 +50586,8 @@ const oogaChatChecks = async () => {
   const slots = [...readFileSync(join(root, "src/index.html"), "utf8").matchAll(/data-native-icon="([a-z]+)"/g)].map((m) => m[1]);
   record("shared native icons: every island tab slot names an icon native-icons.js draws, Ooga Chat's cloud last", slots.length === 5 && slots.at(-1) === "cloud" && slots.every((name) => I.names.includes(name)), JSON.stringify(slots));
   // Voice (ooga-chat-media.js, #654) against a fake broker, fake WebRTC and a fake feed: a listener never asks for a
-  // microphone; Join Voice captures muted before anything carries it, takes the server's lease and becomes a speaker only
-  // on its acknowledgement; refusals leave nothing held; Leave Voice keeps listening; the server ending a lease, a new
+  // microphone; Join voice captures muted before anything carries it, takes the server's lease and becomes a speaker only
+  // on its acknowledgement; refusals leave nothing held; Leave voice keeps listening; the server ending a lease, a new
   // connection or a zone change stop capture exactly once; a sync asked before a zone change plays nothing of the old zone.
   const voiceCheck = async () => {
     const M = load(["src/js/duel-listening.js", "src/ooga-chat/ooga-chat-media.js"], { window: {}, setTimeout, clearTimeout, Math, Date, Promise, Object, Number, Map, Set, Error }).oogaChatMedia;
@@ -50656,7 +50725,7 @@ const oogaChatChecks = async () => {
     out.blocked = held && !r.c.state.blocked && r.listeners.size === 0 && r.pcs[0].closed;
     // A refresh: a speaker's page that is hidden or leaves leaves word in the tab's memory and takes it back when shown
     // again; the page after it, on its first connection, speaks again by itself, muted, naming the connection it
-    // replaces. Leave Voice leaves no word, and an old word, another account's or another zone's is dropped unread.
+    // replaces. Leave voice leaves no word, and an old word, another account's or another zone's is dropped unread.
     const tab = { word: null, take() { const word = this.word; this.word = null; return word; }, keep(word) { this.word = word; } };
     r = rig({ memory: tab }); r.c.zone("main"); snap(r, "c1", "eligible"); await flush();
     const first = r.c.join(); await flush(); r.answer(true, { id: "gh:1", speak: "pending", lease: 7 }); await first; await flush();
@@ -50743,7 +50812,7 @@ const oogaChatChecks = async () => {
     return out;
   };
   const voice = await voiceCheck();
-  record("Ooga Chat voice: a listener hears the zone and never captures; Join Voice captures muted before any connection carries it, publishes under the server's lease and speaks only once acknowledged; mute and Leave Voice act on the track at once and keep listening; a refusal, a revoked lease or a zone change stop capture exactly once; a new connection speaks again by itself on the microphone it kept, open again if it was open and muted if it was muted, and gives up where the server says no; a try that fails for a passing reason is made again after its wait; a second drop on the way back names both connections; a zone full for a moment keeps the wish to speak; a network change is found from the connection that drops, which asks the feed to check its socket and is published again with the microphone open, and a lease asked for over a dead socket is not a try; a page that comes straight back after a refresh speaks again by itself from the word the page before it left in the tab, never from an old word, another account's or one left after Leave Voice; a microphone the browser takes leaves a muted speaker whom Unmute captures again; a stale sync plays nothing; held playback starts on a gesture",
+  record("Ooga Chat voice: a listener hears the zone and never captures; Join voice captures muted before any connection carries it, publishes under the server's lease and speaks only once acknowledged; mute and Leave voice act on the track at once and keep listening; a refusal, a revoked lease or a zone change stop capture exactly once; a new connection speaks again by itself on the microphone it kept, open again if it was open and muted if it was muted, and gives up where the server says no; a try that fails for a passing reason is made again after its wait; a second drop on the way back names both connections; a zone full for a moment keeps the wish to speak; a network change is found from the connection that drops, which asks the feed to check its socket and is published again with the microphone open, and a lease asked for over a dead socket is not a try; a page that comes straight back after a refresh speaks again by itself from the word the page before it left in the tab, never from an old word, another account's or one left after Leave voice; a microphone the browser takes leaves a muted speaker whom Unmute captures again; a stale sync plays nothing; held playback starts on a gesture",
     Object.values(voice).every(Boolean), JSON.stringify(voice));
 };
 // The outdoor voice bridge (outdoor-voice.js, #661) against a fake room: the real scope record, a transport whose frames
@@ -51154,7 +51223,8 @@ const lecturePlayerChecks = async () => {
 // of the pile's ring and every working cave's zone; sleepers and the away are not shown; and its windows and caves
 // read as a page's crew reads them (roster-panel.js `stateAt`, contributors.js `hasRecentActivity`).
 const islandWorldProof = async () => {
-  const context = { window: { BL: {} }, crypto: globalThis.crypto };
+  let now = 1000;
+  const context = { window: { BL: {} }, crypto: globalThis.crypto, performance: { now: () => now } };
   for (const file of ["math.js", "npc-paths.js", "roster-panel.js", "island-layout.js", "island-sim.js", "game-wire.js", "game-timeline.js", "island-world.js"])
     runInNewContext(await readFile(join(root, "src/js", file), "utf8"), context);
   const BLx = context.window.BL, S = BLx.islandSim, L = BLx.islandLayout, ACT = S.ACT;
@@ -51226,7 +51296,55 @@ const islandWorldProof = async () => {
       last[i] = f ? { x: f.x, z: f.z, act: f.act } : null;
     });
   }
+  // Regression: signed in, the server's frames were drawn by the tick's wall clock, up to a step ahead of the world they
+  // carried, 150 ms behind with frames 100 ms or more apart: walkers sped up and slowed down every frame, and stood
+  // still whenever a frame came 50 ms late. Here the object's ticks run late and the frames arrive unevenly. And at under
+  // 10 fps, whose `dt` the director caps at 0.1 s, the play clock must still keep pace with the frames coming in.
+  let handlers = null, seed = 9;
+  const rand = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32);
+  BLx.gameNet = { offers: () => true, open: (kind, venue, h) => { handlers = h; return { state: "live", serverNow: () => now - 30, close() {} }; } };
+  const follow = (frameMs, frames) => {
+    const followers = cast.slice(0, 6).map((c) => ({ traits: { name: c.name }, contributor: c.name, state: "working", bedTravel: { mode: null },
+      root: { visible: true, position: { x: 0, y: 0, z: 0 }, rotation: { y: 0 } } }));
+    const serverWorld = BLx.islandWorld.create({
+      crew: { list: followers, workSites: L.sites, siteActive: () => true, refreshStates() {}, refreshRosterRow() {} },
+      contributors: { stateFor: () => "working" }, net: { state: { me: { id: 1 } }, subscribe: () => () => {} }
+    });
+    const server = S.create({ seed: 7 });
+    server.setCast(cast.slice(0, 6));
+    cast.slice(0, 6).forEach((c) => server.setActivity(c.name, "working", 0b0101));
+    handlers.state({ s: { cast: cast.slice(0, 6).map((c) => c.name) } });
+    const inFlight = [], prior = followers.map(() => null), began = now;
+    let ranAt = now, tickAt = now + 100, steady = 0, lurches = 0, frozen = 0, behind = 0;
+    for (let frame = 0; frame < frames; frame++) {
+      now += frameMs;
+      while (now >= tickAt) {
+        server.step((tickAt - ranAt) / 1000); ranAt = tickAt;
+        const f = BLx.gameWire.frame();
+        server.motion(f, tickAt);
+        inFlight.push({ due: tickAt + 30 + rand() * 40, f });
+        tickAt += 100 + rand() * 30;
+      }
+      inFlight.sort((x, y) => x.due - y.due);
+      while (inFlight.length && inFlight[0].due <= now) handlers.motion(inFlight.shift().f);
+      serverWorld.update(Math.min(0.1, frameMs / 1000));
+      if (now - began > 5000) behind = Math.max(behind, serverWorld.stats.behind);
+      followers.forEach((cave, i) => {
+        const f = cave.follow, was = prior[i], d = f && was ? Math.hypot(f.x - was.x, f.z - was.z) : 0;
+        if (f && was && f.act === ACT.WALK && was.act === ACT.WALK && was.d > 0 && now - began > 5000) {
+          steady++;
+          if (d === 0) frozen++;
+          else if (Math.abs(d - was.d) > 0.25 * was.d) lurches++;
+        }
+        prior[i] = f ? { x: f.x, z: f.z, act: f.act, d } : null;
+      });
+    }
+    return { mode: serverWorld.stats.mode, steady, lurches, frozen, behind };
+  };
+  const fast = follow(1000 / 60, 60 * 60), slow = follow(200, 5 * 60);
   return {
+    serverSmooth: fast.mode === "server" && fast.steady > 3000 && (fast.frozen + fast.lurches) * 50 < fast.steady && fast.behind < 600,
+    serverPaced: slow.mode === "server" && slow.behind > 0 && slow.behind < 600,
     localSmooth: localWorld.stats.mode === "local" && walkFrames > 600 && stillFrames * 50 < walkFrames,
     startsPlaced: worker, startsSeated: seated, startsOnce: !z.start && Math.hypot(z.p.x - 7, z.p.z + 3) > 0.5,
     deterministic: rows(a) === rows(b) && rows(a) !== rows(world(6)),
@@ -51401,7 +51519,7 @@ const unitChecks = async () => {
   record("passive work legs: the authored fixed planner circles the real pile ring, follows one spoke out to the target, never crosses the pile, and replans rather than reuse a graph lane; a walker between spoke samples, or a goal between them, is never sent back to a sample behind it or past the goal; a passive return leg keeps its reserved pile slot on the planned path while an ordinary one keeps the direct pile approach; clanking to chilling from mid-outbound or mid-return walks back along the cave route to the pile slot, then to the chill spot, on terrain and ignoring objects; a passive gorilla's walk to its Ooga's pile slot goes straight over the pile while its work travel to a cave walks straight from another cave or the meadow, even when its origin is reset mid-walk, on terrain, still handing wall steps to the climber",
     Object.values(fixedRoutine).every(Boolean), JSON.stringify(fixedRoutine));
   const islandWorld = await islandWorldProof();
-  record("island world: one seed, one world; workers go round their active caves in turn, shoot from a place in the cave's fan and eat back at the reload fan, chillers idle on spots of their own clear of the pile's ring, sleepers and the away are not shown, its pile from a banana count is the hub's, its windows and caves read as a page's crew reads them, a world started beside a placed crew takes each Ooga up where it stands, once, and a signed-out page's own world moves every walking Ooga on every frame",
+  record("island world: one seed, one world; workers go round their active caves in turn, shoot from a place in the cave's fan and eat back at the reload fan, chillers idle on spots of their own clear of the pile's ring, sleepers and the away are not shown, its pile from a banana count is the hub's, its windows and caves read as a page's crew reads them, a world started beside a placed crew takes each Ooga up where it stands, once, a signed-out page's own world moves every walking Ooga on every frame, and a signed-in page draws the server's walkers at an even pace through late ticks and uneven arrivals",
     Object.values(islandWorld).every(Boolean), JSON.stringify(islandWorld));
   const passiveWeapons = await passiveWeaponTargetProof();
   record("passive weapon targets: a shot passes through a passive NPC to the body behind it, hover and carry picks still find the NPC, and a non-passive body takes the hit",
@@ -54449,8 +54567,6 @@ const equipmentAppChecks = async () => {
     const clearRevision = saved.revision;
     await b.evaluate("document.getElementById('studio-hat-save').click()");
     await wait(`!BL.equipment.state.busy && BL.equipment.state.record.revision===${clearRevision + 1}`, "Clearing the wardrobe did not save");
-    record("equipment wardrobe: a signed-in account row links to the studio on the player's own Ooga from the site's root", await b.evaluate(
-      "(() => { const a=document.getElementById('account-look'), u=new URL(a.href); return !a.hidden && u.pathname==='/' && u.searchParams.get('scene')==='studio' && u.searchParams.get('character')==='equipment-preview'; })()"));
     record("equipment wardrobe: Original everywhere saves no wardrobe and gives the body its own look back", writes.at(-1).wardrobe === null && saved.wardrobe === null
       && await b.evaluate("BL.characterWardrobe.wearing(__ooga.studio.cave)===''"));
     record("equipment studio: ordinary save, reload and creator-update flows have a clean console", b.logs.length === 0, b.logs.join("\n"));

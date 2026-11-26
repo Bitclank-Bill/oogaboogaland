@@ -54,7 +54,7 @@
   // monospace (--mono) at NAME_SIZE bold with NAME_SPACING, a NAME_LINE line in a box padded NAME_PAD_X by NAME_PAD_Y
   // whose bottom stands NAME_BOTTOM over the head's top, centred across the head; the DOT_D online dot DOT_GAP left of
   // the name, both centred on its line; the health bar under the name (HEALTH_ROW more box, as the tooltip's row); the
-  // 9-pixel speaker ICON_GAP right of the name. A chat bubble stands over the box as over an NPC's tooltip (SPEECH_GAP).
+  // microphone (MIC) ICON_GAP right of the name. A chat bubble stands over the box as over an NPC's tooltip (SPEECH_GAP).
   const NAME_SIZE = 13, NAME_LINE = NAME_SIZE * 1.3, NAME_SPACING = "0.39px", NAME_PAD_X = 5, NAME_PAD_Y = 3, NAME_BOTTOM = 2;
   const DOT_D = 8, DOT_GAP = 6, SPEECH_GAP = 6, EDGE = 8;
   // With health the tooltip grows a second grid row: the row gap, then the 4-pixel bar with -2 and +1 margins.
@@ -100,13 +100,8 @@
   const PICK_MARGIN = 0.035;
   // An unused pick slot: no geometry, so the picker passes it over before reading anything else.
   const IDLE_PICK = { geometry: null, visible: false }, IDLE_OWNER = { kind: "none", weaponType: "none" };
-  // x, y, w, h runs on the speaker's 9x9 grid, as the roster's voice mark draws it.
-  const SPEAKER = [0, 3, 2, 3, 2, 2, 1, 5, 3, 1, 1, 7];
-  const WAVES = [5, 3, 1, 3, 7, 2, 1, 5];
-  const CROSS = [5, 3, 1, 1, 7, 3, 1, 1, 6, 4, 1, 1, 5, 5, 1, 1, 7, 5, 1, 1];
-  const runs = (ctx, cells, x, y, k = 1) => {
-    for (let i = 0; i < cells.length; i += 4) ctx.fillRect(x + cells[i] * k, y + cells[i + 1] * k, cells[i + 2] * k, cells[i + 3] * k);
-  };
+  // The voice mark's size on a nameplate: the roster's microphone, its square in CSS pixels.
+  const MIC = 12;
 
   // The zones the hub itself reports, which share its coordinates: the main world (voice-blend.js), and the cave
   // entrances' own names, still sent by a page loaded before they became the island's (`cave-<id>` for a mouth with no
@@ -261,12 +256,14 @@
     // A character as the registry names it (claims are case-insensitive), which the crew's map is keyed by.
     const canonical = (name) => { const c = BL.characters.get(name); return c ? c.handle : name; };
     const build = (rec) => {
+      // A land's areas report from their own middles (zone-map.js `offsetOf`); this scene's coordinates add it back.
+      const o = BL.zoneMap.offsetOf(rec.poseZone || rec.zone), rx = rec.x + o.x, rz = rec.z + o.z;
       const gorilla = rec.bodyKind === "gorilla" || rec.body.startsWith("gorilla:");
       const decoded = rec.bodyName || (gorilla ? rec.body.slice(8) : rec.body);
       // Claims are case-insensitive; scene maps use the contributor's canonical handle.
       const owner = gorilla && BL.characters.get(decoded), name = owner ? owner.handle : decoded;
       const cave = gorilla
-        ? (createGorilla && createGorilla(name, rec)) || BL.agent.create({ managed: true, groundAt: () => rec.y, x: rec.x, z: rec.z, heading: rec.yaw })
+        ? (createGorilla && createGorilla(name, rec)) || BL.agent.create({ managed: true, groundAt: () => rec.y, x: rx, z: rz, heading: rec.yaw })
         : BL.models.caveman(BL.contributors.traitsFor(name));
       if (!gorilla) {
         BL.crew.preparePresentation(cave);
@@ -285,7 +282,7 @@
         if (cave.parts.dog) {
           // The shared terrain queries read the owner's standing envelope and passenger origin.
           cave.bodyHeight = height; cave.bodyRadius = BL.crew.bodyRadiusOf(cave); cave.hop = 0;
-          cave.riding = { support: null, outside: null, x: rec.x, y: rec.y + cave.baseY, z: rec.z };
+          cave.riding = { support: null, outside: null, x: rx, y: rec.y + cave.baseY, z: rz };
           cave.sleepParts = { headX: cave.parts.head.position.x, headZ: cave.parts.head.position.z };
           pets.attach(cave);
           // Detached from the sightHidden root, and as late to the outline registry as the body it follows.
@@ -295,7 +292,7 @@
       // Its hip over its feet is the body's own (`cave.baseY`), which a worn height moves (character-wardrobe.js).
       const entry = { id: rec.id, body: rec.body, name, gorilla, cave, motion, get baseY() { return gorilla ? 0 : cave.baseY; }, get height() { return gorilla ? 0 : cave.bodyHeight; }, top: NaN, dTop: 0,
         // The walk's step from the last sample, when it came and how fast it turned since the one before.
-        gaitAt: NaN, gaitPhase: 0, gaitRate: 0, puff: 0, jetNode: null, jetFlame: null, swing: 0, shotAt: -Infinity, lastHeld: 0, lastMode: 0, lastMelee: 0, sampleAt: 0, sampleSwap: 0, sampleSwapIndex: 0, x: rec.x, y: rec.y, z: rec.z, yaw: rec.yaw, phase: 0, hidden: null, hiddenOverride: null, ghosted: null, label: "", labelW: 0,
+        gaitAt: NaN, gaitPhase: 0, gaitRate: 0, puff: 0, jetNode: null, jetFlame: null, swing: 0, shotAt: -Infinity, lastHeld: 0, lastMode: 0, lastMelee: 0, sampleAt: 0, sampleSwap: 0, sampleSwapIndex: 0, x: rx, y: rec.y, z: rz, yaw: rec.yaw, phase: 0, hidden: null, hiddenOverride: null, ghosted: null, label: "", labelW: 0,
         react: "", reactT: 0, beamOut: 0, beamIn: 0, beamSlot: -1, screenX: NaN, plateLeft: NaN, plateTop: NaN, plateW: 0, plateH: 0, plateTextX: NaN, plateBaseline: NaN, plateBarLeft: NaN, plateBarTop: NaN, pickOwner: { kind: "player", id: rec.id, cave, weaponType: "none" } };
       bodies.set(rec.id, entry);
       hideLocal(entry);
@@ -665,10 +662,11 @@
           entry.x = entry.cave.root.position.x; entry.y = entry.cave.root.position.y - entry.baseY; entry.z = entry.cave.root.position.z;
         }
         entry.restPhase = restPhase;
-        const far = Math.hypot(rec.x - entry.x, rec.y - entry.y, rec.z - entry.z) > SNAP;
+        const o = BL.zoneMap.offsetOf(rec.poseZone || rec.zone), rx = rec.x + o.x, rz = rec.z + o.z;
+        const far = Math.hypot(rx - entry.x, rec.y - entry.y, rz - entry.z) > SNAP;
         const t = far ? 1 : k;
-        entry.dx = (rec.x - entry.x) * t;
-        entry.dz = (rec.z - entry.z) * t;
+        entry.dx = (rx - entry.x) * t;
+        entry.dz = (rz - entry.z) * t;
         entry.x += entry.dx;
         entry.cave.hopV = far || !(dt > 0) ? 0 : (rec.y - entry.y) * t / dt;
         entry.y += (rec.y - entry.y) * t;
@@ -954,12 +952,11 @@
         // A cloud speaker is always in voice; the room says only whether their microphone is muted.
         if (!entry.cloud && !rec.voice) continue;
         const muted = entry.cloud ? rec.mic === "muted" : rec.muted;
-        const ix = Math.round(textX + entry.labelW + ICON_GAP), iy = Math.round(lineMid - 4.5);
-        // Speaking as the page hears it, a cloud speaker's voice keyed by their account (the number in their `gh:` id).
-        const voiceId = entry.cloud ? cloudVoice(rec.id) : rec.id;
-        ctx.fillStyle = muted ? ICON_MUTED : voiceId && BL.voice.speaking(voiceId) ? ICON_SPEAKING : ICON_IDLE;
-        runs(ctx, SPEAKER, ix, iy);
-        runs(ctx, muted ? CROSS : WAVES, ix, iy);
+        // Speaking as the page hears it, a cloud speaker's voice keyed by their account (the number in their `gh:` id): the
+        // roster's microphone (native-icons.js `drawMic`), filled with their voice's level while they talk.
+        const voiceId = entry.cloud ? cloudVoice(rec.id) : rec.id, talking = !muted && !!voiceId && BL.voice.speaking(voiceId);
+        BL.nativeIcons.drawMic(ctx, Math.round(textX + entry.labelW + ICON_GAP), Math.round(lineMid - MIC / 2), MIC,
+          muted ? ICON_MUTED : talking ? ICON_SPEAKING : ICON_IDLE, muted, talking ? BL.voice.level(voiceId) : 0, NAME_STROKE);
       }
       ctx.restore();
     };

@@ -162,7 +162,7 @@
     mark.append(hand, react);
     toggle.append(label); name.append(toggle); dots.append(presence, host);
     marks.className = "roster-marks";
-    voice.className = "roster-voice"; voice.type = "button"; voice.hidden = true; voice.setAttribute("aria-describedby", id); voice.append(BL.hud.voiceIcon.cloneNode(true));
+    voice.className = "roster-voice"; voice.type = "button"; voice.hidden = true; voice.setAttribute("aria-describedby", id); voice.append(BL.nativeIcons.voice());
     // A voice link, offered where the room keeps them; never on the visitor's own row.
     link.className = "players-link"; link.type = "button"; link.hidden = true; link.append(linkIcon.cloneNode(true));
     // In a hosted chat's voice (call-v1): the island voice paused, so a cloud where the voice mark would be.
@@ -312,11 +312,13 @@
       const rec = net.remotes.get(row.id);
       if (!rec) continue;
       let aim = "route", metres = -1, distance = -1, lastKnown = false;
-      if (BL.voiceBlend.sameFrame(rec.zone, mine)) {
+      if (BL.voiceBlend.sameFrame(rec.zone, mine) || Z.sharedFrame(rec.zone, mine)) {
         if (rec.poseZone === rec.zone) {
           lastKnown = !rec.body;
           aim = lastKnown ? "known" : "player";
-          if (placed) { distance = Math.hypot(rec.x - me.x, rec.y - me.y, rec.z - me.z); metres = Math.round(distance); }
+          // Positions an area of a land reports from its own middle (zone-map.js `offsetOf`) have it added back.
+          const oa = Z.offsetOf(rec.zone), ob = Z.offsetOf(mine);
+          if (placed) { distance = Math.hypot(rec.x + oa.x - me.x - ob.x, rec.y - me.y, rec.z + oa.z - me.z - ob.z); metres = Math.round(distance); }
         } else aim = "nowhere";
       } else {
         const step = Z.next(mine, rec.zone);
@@ -498,8 +500,9 @@
     }
     const rec = net.remotes.get(row.id);
     if (!rec || rec.zone !== row.zone) return;
-    if (BL.voiceBlend.sameFrame(rec.zone, s.zone)) {
-      if (rec.poseZone === rec.zone) BL.pilot.turnToward(rec.x, rec.y + BODY_Y, rec.z);
+    if (BL.voiceBlend.sameFrame(rec.zone, s.zone) || Z.sharedFrame(rec.zone, s.zone)) {
+      const o = Z.offsetOf(rec.zone);
+      if (rec.poseZone === rec.zone) BL.pilot.turnToward(rec.x + o.x, rec.y + BODY_Y, rec.z + o.z);
       return;
     }
     const me = s.self, placed = me.zone === s.zone, step = Z.next(s.zone, rec.zone);
@@ -668,6 +671,17 @@
   net.subscribeClouds(render);
   BL.voice.subscribe(paintMarks);
   BL.voice.subscribe(paintHearing);
+  // A speaking mark fills with its voice's level on each meter read (voice.js `subscribeLevels`; style.css `--lv`).
+  const fillMark = (row, level) => {
+    const v = Math.round(level * 20) / 20;
+    if (row.lv !== v) { row.lv = v; row.voice.style.setProperty("--lv", String(v)); }
+  };
+  BL.voice.subscribeLevels(() => {
+    if (!showing || stale) return;
+    fillMark(selfRow, V.ownLevel());
+    for (const row of rows.values()) fillMark(row, V.level(row.id));
+    for (const row of cloudRows.values()) fillMark(row, row.cloud.startsWith("gh:") ? V.level(Number(row.cloud.slice(3))) : 0);
+  });
   // The scene the visitor is in names its doors (`fn(from, step, out, nearX, nearZ)`, true with `out` written), or null.
   const setDoors = (fn) => {
     doors = fn;
