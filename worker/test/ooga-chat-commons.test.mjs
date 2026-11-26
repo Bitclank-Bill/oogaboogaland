@@ -127,8 +127,8 @@ test("presence relays without positions; a member sends nothing but lines; the i
   assert.ok(kinds.includes("join") && kinds.includes("body") && kinds.includes("zone") && kinds.includes("hand"));
   assert.ok(!kinds.includes("state"), "no pose snapshot ever reaches a member");
   assert.deepEqual(Object.keys(app.sent.find((m) => m.t === "join").p).sort(), ["body", "display", "hand", "handEmoji", "handTone", "id", "login", "muted", "voice", "zone"]);
-  // A member's world actions are ignored: no body, no reaction, no private conversation, no link.
-  for (const msg of [{ t: "body", name: "bea" }, { t: "react", e: "🔥" }, { t: "pm", op: "invite", to: 1 }, { t: "link", to: 1, on: true }, { t: "zone", name: "outside" }])
+  // A member's world actions are ignored: no body, no reaction, no private conversation (a voice link is its own check).
+  for (const msg of [{ t: "body", name: "bea" }, { t: "react", e: "🔥" }, { t: "pm", op: "invite", to: 1 }, { t: "zone", name: "outside" }])
     await h.send(app, msg);
   assert.equal(h.room.players.size, 1);
   assert.equal(isle.sent.filter((m) => m.t === "react" || m.t === "pm" || m.t === "links" && m.wants && m.wants.length).length, 0);
@@ -136,6 +136,29 @@ test("presence relays without positions; a member sends nothing but lines; the i
   assert.deepEqual(app.sent.filter((m) => m.t === "clouds").at(-1).clouds.map((c) => c.id), ["gh:2"], "cloud speakers are in Online Oogas too");
   await h.room.webSocketMessage(app, "not json");
   assert.equal(app.closed.code, 4400);
+});
+
+test("a voice link shows and holds in both apps: a member sees its account's links, asks from Ooga Chat, and hears asks made on the island", async () => {
+  const h = await harness();
+  const isle = await h.player(1, "amy"), mine = await h.player(2, "ottoz0r");
+  const { ws: app } = await h.member(2, "ottoz0r");
+  assert.deepEqual(app.sent.find((m) => m.op === "welcome").links, { wants: [], linked: [] }, "the welcome carries the account's links");
+  const links = (ws) => ws.sent.filter((m) => m.t === "links").at(-1);
+  // Asked on the island: the account's Ooga Chat member hears it too.
+  await h.send(mine, { t: "link", to: 1, on: true });
+  assert.deepEqual(links(app), { t: "links", wants: [1], linked: [] }, "the island's ask, without its words to the asker");
+  // Asked back from the other side: both of the account's sockets read it linked.
+  await h.send(isle, { t: "link", to: 2, on: true });
+  assert.deepEqual(links(app).linked, [1]);
+  assert.deepEqual(links(mine).linked, [1]);
+  // Taken back from Ooga Chat: the same ask the island keeps, so the island player and amy hear the link broken.
+  await h.send(app, { t: "link", to: 1, on: false });
+  assert.deepEqual(links(app).wants, []);
+  assert.deepEqual(links(mine).wants, [], "the island page of the same account follows");
+  assert.deepEqual(links(isle), { t: "links", wants: [2], linked: [], app: [] }, "amy's ask still stands, theirs to cancel");
+  // A member can only ask an island player, as the island can.
+  await h.send(app, { t: "link", to: 99, on: true });
+  assert.deepEqual(links(app).wants, []);
 });
 
 test("access ends: signing out or losing eligibility closes the account's members; the sweep's deadline closes them too", async () => {
@@ -164,6 +187,15 @@ test("access ends: signing out or losing eligibility closes the account's member
   const a = await h.member(4, "dee"), b = await h.member(4, "dee"), c = await h.member(4, "dee"), d = await h.member(4, "dee");
   assert.equal([a, b, c].every((m) => m.ws.closed === null), true);
   assert.equal(d.ws.closed.code, 4429);
+  // At the limit, the account's own pages that went away without closing make room at once, not at the next sweep:
+  // one silent past SILENT_MS goes, one heard from lately stays.
+  const { SILENT_MS } = await import("../src/room-commons.js");
+  h.advance(SILENT_MS - 1000);
+  await h.send(b.ws, { t: "chat", text: "still here", clientId: "b1" });
+  h.advance(2000);
+  const e = await h.member(4, "dee");
+  assert.deepEqual([a.ws.closed && a.ws.closed.code, b.ws.closed, c.ws.closed && c.ws.closed.code, e.ws.closed], [4000, null, 4000, null],
+    "a page back after a phone slept gets in, its dead sockets gone");
 });
 
 test("with only members here the sweep runs every four minutes, and a player arriving brings it back to one a minute", async () => {
@@ -194,6 +226,19 @@ test("a woken Room keeps its members as members, never as players", async () => 
   const isle = await woken.player(1, "amy");
   await woken.send(ws, { t: "chat", text: "still here", clientId: "w1" });
   assert.deepEqual(lines(isle).map((l) => [l.login, l.text]), [["bea", "still here"]]);
+});
+
+test("after a wake, an account at its limit still makes room from its own silent sockets", async () => {
+  // With only members here the Room hibernates between frames: the page coming back is what wakes it, and its dead
+  // sockets must not look heard from at that wake.
+  const { SILENT_MS } = await import("../src/room-commons.js");
+  const accepted = [], start = 1_800_000_000_000;
+  const first = await harness({ accepted, start });
+  const pages = [await first.member(4, "dee"), await first.member(4, "dee"), await first.member(4, "dee")];
+  const woken = await harness({ accepted, start: start + SILENT_MS + 5000 });
+  const back = await woken.member(4, "dee");
+  assert.equal(back.ws.closed, null, "the page back after a phone slept gets in");
+  assert.ok(pages.every((p) => p.ws.closed && p.ws.closed.code === 4000), "its silent sockets went");
 });
 
 test("rolled out reading first: without `commons-send` a member reads the conversation and its lines are refused, draft kept", async () => {
@@ -285,7 +330,9 @@ test("a player row a Commons name made goes with the Ooga Chat account, while it
   const { getPlayer, upsertPlayerFromGitHub } = await import("../src/db.js");
   const db = memoryD1(new URL("../migrations/", import.meta.url));
   const contributorFor = Object.assign(async (login) => ["amy", "bea"].includes(login) ? { handle: login } : null, { fresh: () => true });
-  const env = { OOGA_CHAT_FEATURES: "bridge,commons", DB: db };
+  const forgot = [];
+  const env = { OOGA_CHAT_FEATURES: "bridge,commons", DB: db,
+    ROOM: { getByName: () => ({ communityRevoke: async () => ({ revoked: 0 }), forgetVoiceLinks: async (id) => { forgot.push(id); } }) } };
   const principal = (id, login) => ({ id: `pr_${login}`, provider: "github", providerUserId: String(id), login });
   const name = (p, display) => displayOps({ contributorFor }).display.run(env, { payload: { display }, principal: p });
   const revoke = (p, reason) => revokeOps.revoke.run(env, { payload: { reason }, principal: p });
@@ -295,12 +342,14 @@ test("a player row a Commons name made goes with the Ooga Chat account, while it
   assert.ok(await getPlayer(db, 1), "signing out keeps it");
   await revoke(principal(1, "amy"), "deleted");
   assert.equal(await getPlayer(db, 1), null, "deleting the Ooga Chat account removes it");
+  assert.deepEqual(forgot, [1], "and the voice links it asked for from Ooga Chat");
   // Signed in on the island first, or after: the island's own account, which Ooga Chat deletion leaves alone.
   await name(principal(2, "bea"), "Bea");
   await upsertPlayerFromGitHub(db, { id: 2, login: "bea", avatar_url: null });
   assert.equal((await getPlayer(db, 2)).display, "Bea");
   await revoke(principal(2, "bea"), "deleted");
   assert.equal((await getPlayer(db, 2)).display, "Bea", "an island account stays");
+  assert.deepEqual(forgot, [1], "with its own voice links, which only deleting the island account takes");
 });
 
 test("the edge's Commons name: only an eligible GitHub contributor's save from the app's own page reaches the island", async () => {
@@ -344,4 +393,20 @@ test("the edge's Commons name: only an eligible GitHub contributor's save from t
   assert.equal((await save(amy, { display: "x" })).status, 400, "the island's rules refuse it");
   forgetHello();
   assert.equal((await save(amy, { display: "Amy" }, { e: { ...env, FEATURES: "github" } })).status, 503, "the Commons off");
+});
+
+test("a member hears how many are in hosted chats through Ooga Chat, as the island's pages do", async () => {
+  const h = await harness({ features: "bridge,commons,commons-send,chats" });
+  const { ws: first } = await h.member(4, "dee");
+  assert.equal(first.sent[0].chatOnline, undefined, "no chats, no number");
+  await h.room.chatMembers("AAAAAAAAAAAAAAAA", "Dev call", 2, 3, ["x:9", "gh:7"]);
+  assert.deepEqual(first.sent.filter((m) => m.t === "chat-online").at(-1), { t: "chat-online", n: 2, mine: false });
+  const { ws: next } = await h.member(5, "eve");
+  assert.deepEqual([next.sent[0].chatOnline, next.sent[0].chatMine], [2, false], "a member's welcome carries it");
+  // Another page of dee's in a chat: dee is among the number, so dee's pages count them once; nobody's id goes out.
+  await h.room.chatMembers("AAAAAAAAAAAAAAAA", "Dev call", 2, 3, ["x:9", "gh:4"]);
+  assert.deepEqual(first.sent.filter((m) => m.t === "chat-online").at(-1), { t: "chat-online", n: 2, mine: true }, "the same total, now with dee among it");
+  assert.deepEqual(next.sent.filter((m) => m.t === "chat-online").at(-1), { t: "chat-online", n: 2, mine: false });
+  const { ws: again } = await h.member(4, "dee");
+  assert.equal(again.sent[0].chatMine, true);
 });

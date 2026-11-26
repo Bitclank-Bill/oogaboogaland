@@ -124,7 +124,7 @@ export const buildTree = (BL = load()) => {
           children: [node("bifrost-chamber", zoneMap.landOf("bifrost.chamber"), { land: "bifrost", via: "arch field", zones: ["bifrost.chamber"], ...at("bifrost"), open: true,
             blurb: "A round hall of stone and bronze with a ring of windows onto other worlds, and mirrors for the worlds still to come.",
             children: [...windows, ...directory] })] })] }),
-      node("mirror", "Mirror cave", { via: "cave mouth", where: clock(mirror.clock), zones: ["mirror"], blurb: `The Matrix mirror and the ${mirror.name} cave behind it.` }),
+      node("mirror", "The Observatory", { via: "walk through the mirror", where: clock(mirror.clock), zones: ["mirror"], blurb: "A circular chamber with live camera screens on black walls around a central chair. Walk through its return mirror to reach the island." }),
       node("factory", factory.name, { land: "factory", via: "tunnel & shield", where: clock(factory.clock), zones: ["factory", "factory.hall"], ...at("lightning"),
         children: [node("hangar", zoneMap.landOf("factory.hangar"), { land: "factory", via: "door", zones: ["factory.hangar"], ...at("jet"),
           children: HANGAR_ROOMS.map((name, i) => node(`hangar-room-${i}`, name, { kind: "room", land: "factory", via: "keypad", blurb: "A room off the hangar floor, behind a door keypad." })) })] }),
@@ -143,7 +143,8 @@ export const buildTree = (BL = load()) => {
                 children: [node("ghost-arena", zoneMap.landOf("ghost-arena"), { land: "haunt", via: "hallway's end", zones: ["ghost-arena", "arcade-hunt", "arcade.arena"],
                   objects: [{ cls: "GameHost", prefix: "ghost-hunt:" }], blurb: "A round of dark stone under the stars, where the ghost hunt is played." })] }),
               node("arcade-block-hall", "Block Frenzy hall", { land: "arcade", via: "upper hall", blurb: "An open-air ledge and the zipline out into the sky.",
-                children: [node("block-frenzy", zoneMap.landOf("block-frenzy"), { land: "block", via: "zipline", zones: ["block-frenzy"], ...at("blockfrenzy") })] })
+                children: [node("block-frenzy", zoneMap.landOf("block-frenzy"), { land: "block", via: "zipline", zones: ["block-frenzy"], ...at("blockfrenzy") })] }),
+              node("arcade-raid", route("oogaraid").title, { land: "arcade", via: "back door", zones: ["scene-raid"], ...at("oogaraid") })
             ] })
         ] }),
       node("rainforest", zoneMap.landOf("rainforest"), { land: "rainforest", via: "vine bridge", where: "between 3 and 4 o'clock", zones: ["rainforest"],

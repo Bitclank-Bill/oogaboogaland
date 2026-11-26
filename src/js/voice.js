@@ -134,6 +134,7 @@
   let preferenceOwner = 0;
   let mic = null, pubPc = null, subPc = null, desired = [], queue = Promise.resolve();
   let listenerCount = null;
+  const LISTENERS_MAX = 1024;
   // The outdoor bridge's word (setOutdoor): the microphone held off, public listeners, public speakers to play at full.
   let outdoorHeld = false, outdoorAudience = 0, outdoorSources = null;
   // Overhearing (below, `overhear`): a receive session this page opened by itself to hear the main island's public
@@ -468,10 +469,14 @@
     s.limiter.threshold.value = -1; s.limiter.knee.value = 0; s.limiter.ratio.value = limitRatio(s.gain.gain.value);
     s.limiter.attack.value = 0.003; s.limiter.release.value = 0.1;
     s.meter.source.connect(s.gain);
+    // Local room reflections sit before this voice's gain: mute, range cutoff and
+    // receive volume silence its dry sound and tail together. Never process the microphone.
+    s.acoustics = BL.roomAcoustics.create(audio, s.meter.source, s.gain, 0.6);
     s.gain.connect(s.limiter); s.limiter.connect(audio.destination);
   };
   // Lets go of a voice's audio nodes; a source is bound to its one stream, so nothing here is kept for reuse.
   const unplug = (s) => {
+    s.acoustics?.dispose(); s.acoustics = null;
     if (s.meter) s.meter.source.disconnect();
     if (s.gain) s.gain.disconnect();
     if (s.limiter) s.limiter.disconnect();
@@ -981,7 +986,7 @@
     overhear();
   }
   const overhear = async () => {
-    if (!passiveWanted || passive || passiveOpening || stats.enabled || stats.joining || armed || rejoining || BL.net.state.room !== "live") return;
+    if (!passiveWanted || passive || passiveOpening || stats.enabled || stats.joining || armed || rejoining || BL.net.state.call || BL.net.state.room !== "live") return;
     const s = support();
     if (!s.secure || !s.webrtc) return;
     if (!(navigator.userActivation && navigator.userActivation.hasBeenActive)) {
@@ -1086,7 +1091,8 @@
   const resume = () => {
     // While the account speaks from Ooga Chat on another device, coming back by itself would take that voice away: the
     // visitor is asked instead (voice-handoff.js), and Join voice is their answer.
-    if (armed || stats.enabled || stats.joining || BL.net.state.zone === STUDIO_ZONE || elsewhere() || !joinedBefore()) return;
+    // In a hosted chat's voice (chat-call.js) the island's waits until the visitor leaves it, which puts it back.
+    if (armed || stats.enabled || stats.joining || BL.net.state.call || BL.net.state.zone === STUDIO_ZONE || elsewhere() || !joinedBefore()) return;
     armed = stats.returning = stats.muted = true;
     window.addEventListener("pointerup", firstPress, true);
     window.addEventListener("keydown", firstPress, true);
@@ -1094,7 +1100,16 @@
     if (navigator.userActivation && navigator.userActivation.hasBeenActive) rejoin();
   };
 
-  const join = () => { spokeElsewhere = false; endRecovery(); return enable().then(() => { if (stats.publishing) rememberJoined(true); }); };
+  // Joining the island's voice hangs up a hosted chat's (chat-call.js): one voice at a time, the visitor's choice. A host
+  // leaves only by handing the chat to a co-host or ending it (chat-hosts.js), so for them the island's voice waits.
+  const join = () => {
+    if (BL.net.state.call && BL.chatCall && BL.chatCall.room?.you?.rank === "host") {
+      if (BL.hud && BL.hud.toast) BL.hud.toast("You're hosting a chat · hand it to a co-host or end it to join island voice");
+      return Promise.resolve();
+    }
+    if (BL.net.state.call && BL.chatCall) BL.chatCall.leave();
+    spokeElsewhere = false; endRecovery(); return enable().then(() => { if (stats.publishing) rememberJoined(true); });
+  };
 
   // The footer's button: join, then mute and unmute. An Unmute while a returning visitor connects waits for that.
   const toggle = () => {
@@ -1267,7 +1282,8 @@
   const setPeers = (ids, gens = null, listeners = null) => {
     syncPreferences();
     desired = ids.slice();
-    listenerCount = Number.isSafeInteger(listeners) && listeners >= 0 && listeners < 32 ? listeners : null;
+    // Linked partners in Ooga Chat add to the room's own players, up to its 64 links, so the bound is the two together.
+    listenerCount = Number.isSafeInteger(listeners) && listeners >= 0 && listeners <= LISTENERS_MAX ? listeners : null;
     wantedGen.clear();
     for (let i = 0; i < ids.length; i++) wantedGen.set(ids[i], gens ? gens[i] : 0);
     for (const [id, s] of subs) hear(s, heard(id));

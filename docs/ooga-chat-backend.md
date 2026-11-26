@@ -40,12 +40,13 @@ release (#669).
 |---|---|---|
 | Edge Worker | `ooga-chat-staging` | `ooga-chat-production` |
 | Origin (`SITE_ORIGIN`) | `https://ooga-chat-staging.wickedsmartbitcoin.workers.dev` | `https://ooga.chat` (custom domain; no workers.dev copy) |
+| Island (`ISLAND_ORIGIN`, the bootstrap's `island`, for a chat's Go there) | `https://oogaboogaland-staging.wickedsmartbitcoin.workers.dev` | `https://oogabooga.land` |
 | Config | `wrangler.ooga-chat.staging.jsonc` | `wrangler.ooga-chat.production.jsonc` |
 | D1 | `ooga-chat-staging` (`109e1799-…`, ENAM) | `ooga-chat-production` (`c4a02871-…`, ENAM) |
 | Bridge (`OBL`) | `oogaboogaland-staging#ChatBridge` | `oogaboogaland-production#ChatBridge` |
 | Donations | `bananapayserver-staging#PageApi` (signet) | `bananapayserver-production#PageApi` (mainnet) |
 | Rate limiters | namespaces 2010–2014 | namespaces 1010–1014 |
-| Deploys | by hand (`ooga-chat-staging.yml`) | by hand on `rock` (`ooga-chat-production.yml`) |
+| Deploys | after each merge's island staging deploy, or by hand (`ooga-chat-staging.yml`) | by hand on `rock` (`ooga-chat-production.yml`) |
 
 Staging lives on workers.dev for now. `ooga.chat` is a zone in this account since 2026-11-15, on Cloudflare's
 nameservers. A Custom Domain can't be created over an existing DNS record for the same name, so the apex's records
@@ -384,6 +385,23 @@ snapshot after a reconnect as a confirmation (the review on #677). The two clien
 `app`/`chat`, `face`/`avatar`, `muted`/`mic`). The server sends each client its own shape from one model, and a single
 shape later is welcome.
 
+## Hosted chats
+
+Hosts, co-hosts, speakers and listeners in chats a contributor starts are their own design, in
+[ooga-chat-hosts.md](ooga-chat-hosts.md): the roles and requests, the `ChatDirectory` object (migration `v6`), one
+`Audience` object a chat (`chat:<id>`) speaking audience protocol 2, the island's `/api/chats` routes and the edge's
+`/api/chat/chats`, and the `chats` switch on both sides (`OOGA_CHAT_FEATURES` on the island, `FEATURES` on the edge). A
+chat's socket is this section's audience socket with `?chat=<id>`, its media the media section's with the same, and the
+bridge reaches a chat only while the directory lists it (`x-chat-id`, else 404). Inside a chat, a host's leave replaces
+the contributor rule below for speaking: anyone signed in, X included, may be invited; a GitHub account is still refused
+while banned or while another account holds its login.
+
+A Main Island chat also has its own copy of the zone, where its speakers walk their Oogas: the island's `Room` class
+run as `chat:<id>` (`worker/src/room-copy.js`), reached by the island page through `GET /api/chats/<id>/world` behind
+the island's `copies` switch, with the chat deciding who walks it. Clouds seat the chat's other speakers there, and the
+chat relays the walkers' places to connections that asked for the island view (`walk-v1`). Nothing from a copy reaches
+the real island; Ooga Chat's clients never connect to one.
+
 ## Media (#666)
 
 Ooga Chat's audio goes publisher to SFU to listener on the environment's one Realtime SFU app, the island's own, so a
@@ -479,21 +497,36 @@ cost, latency and security review; no speaker is dropped to fit.
 
 ## The privacy boundary (#667)
 
-The guarantee: the island's private audio (a cave, a level below, a Sphere room, the Bifrost chamber, a DSB room, any
-other scene, a voice link) is never discoverable or subscribable through Ooga Chat, and a valid transition out of the
+The guarantee: the island's private audio (a level below, a Sphere room, the Bifrost chamber, a DSB room, any
+other scene) is never discoverable or subscribable through Ooga Chat, and a valid transition out of the
 outdoors cannot carry new private microphone samples to a subscription that was public. Launch waits on this.
+A voice link is the one carve-out, and only for the two accounts in it: the island tells the Audience each linked
+player's publication with its partners (`world`'s `linked`, by GitHub id), and only connections of a partner's own
+GitHub identity may pull it (`authorizedFor`), wherever the player stands; it is in no roster, zone or count of Ooga
+Chat's, and goes the moment the link breaks, the player leaves voice or the `outdoor` switch is off. The player always
+sees who can hear it: the Room names its partners for every player in voice, the Audience answers with those connected
+to it by name (`listeners`' `ears`), and the island player's `links` frame carries them as `app`, each a row of its
+Online Oogas with the link (under Ooga Chat, or Main Island while listening there, or on its cloud while speaking),
+whose click takes back that one ask. Deleting an Ooga Chat account the island never had takes the links it asked
+for from there (`forgetVoiceLinks`, as `DELETE /api/me` does for an island account). A Room waking from hibernation or a deploy
+sends its first word only once its stored links have loaded, so a wake never names an empty list and closes a
+partner's pull. The other way, an island
+player hears a linked partner speaking from Ooga Chat wherever it stands (`addSources`), and a partner listening from
+Ooga Chat keeps the island microphone from being alone (`listeners`' `ears`). A link is the same ask in both apps: a
+contributor's Online Oogas in Ooga Chat shows it on each island player's row and asks or takes back through the Commons
+(below), never in the Ooga Chat tab.
 
 **Who decides the scope.** The page decides first and finer, from the body's own geometry (`src/js/outdoor-scope.js`,
-#658: a cave's doorway plane, the Sphere's shell), and asks the Room with the handshake (#661). The Room admits only a
+#658: the Sphere's shell, a level's start), and asks the Room with the handshake (#661). The Room admits only a
 scope its own registry agrees with (`worker/src/outdoor-policy.js`), from what it holds about the player: its zone, its
 body, a level crossing (`blendTo`) and a cabinet seat. The registry is default-deny, every public zone named one by one:
 
 | Zone | Scope |
 |---|---|
-| `outside`, `between`, `sphere`, `rainforest`, `bifrost` | `main` |
+| `outside` (cave entrances included), `between`, `sphere`, `rainforest`, `bifrost`, `repos` (Merge Rock) | `main` |
 | `dsb-outside` | `dsb` |
 | no body; any crossing to or between levels; a seat at a hall cabinet (the cave apron's outdoor seats are `outside`) | none |
-| every other zone, known or not: `hq`, `hq-basement`, `rainforest-under`, `repos` (Merge Rock, no decision yet), `sphere-0`…`sphere-9`, `bifrost.chamber`, every DSB room, every other scene's zone | none |
+| every other zone, known or not: `hq`, `hq-basement`, `rainforest-under`, `sphere-0`…`sphere-9`, `bifrost.chamber`, every DSB room, every other scene's zone | none |
 
 A new outdoor is added here with a check; a new interior needs nothing to stay excluded. The checks enumerate the island's
 world zones and DSB Land's rooms from their own sources, so a new one is caught as it lands.
@@ -625,7 +658,16 @@ display, body, zone, voice, muted, hand, handTone, handEmoji }`, and after that 
 receives `{ t: "duel", op: "start", id, a, b }` and `{ t: "duel", op: "end", id }`: only active pair ids, stripped
 from the island's frames. The initial pairs are rebuilt from the room's restored duel records. Challenges, health,
 positions and results are never relayed, and the member cannot send duel actions. No pose, position snapshot, distance,
-NPC frame, SFU id, voice link, private-conversation frame, reaction over a body, other game state or chalk reaches a member.
+NPC frame, SFU id, private-conversation frame, reaction over a body, other game state or chalk reaches a member.
+
+**Voice links in both apps.** The welcome carries the account's links as the island keeps them, `links: { wants, linked
+}` (its own asks by account id, and those asked back), and every change reaches each of the account's sockets, island
+and Ooga Chat alike, as `{ t: "links", wants, linked }` (the asking socket alone also hears `refused`, `all` and `n`). A
+member may send `{ t: "link", to, on }`, the island's own frame, through the Room's `linkMessage`: the same rate bucket,
+limits and storage, an island player its only target. Online Oogas in Ooga Chat no longer draws it: with hosted chats
+Ooga Chat's voice is a chat's, which a link never reaches (the island's `outdoor` switch, which carried linked voices, is
+off), so the frames stay for the old bridge's cleanup and the links are the island's own. Online Oogas there lists Main Island's Ooga Chat listeners after its players in gray; every "N online" in both apps counts them, anyone
+also on the island once.
 
 **The contract names (#670), over the island's own frames.** No second chat format: `communitySnapshot` is the welcome,
 `commonsHistory` the `chat-history` after it, `onlineDelta` the relayed `join`, `leave`, `body`, `zone`, `vstate` and
@@ -646,17 +688,22 @@ A socket kept open across a hibernation misses nothing and gets no second welcom
 | Speak from a cloud (#666, #668) | no | no | no | yes, with `speak` and `cloud` | its own voice |
 | The Commons: read and send lines | no | no | no | yes, with `commons` | yes |
 | Online Oogas: who is here, zone, voice, hand | no | no | no | yes, without positions | yes, with distances |
-| Private conversations, voice links | no | no | no | no (island only) | yes |
+| Private conversations | no | no | no | no (island only) | yes |
+| Voice links | no | no | no | yes, in Online Oogas: the island's own asks, its audio both ways | yes |
 | A body, poses, NPC host, games, chalk | no | no | no | no | yes |
 | Edit the display name | no | no | no | yes, the name field at the top of The Commons (`POST /api/chat/commons/name`), saved as the island's own; shown in both | yes (`PATCH /api/me`) |
 
 **Access ends.** Signing out, deleting the account or losing eligibility (the edge's `revoke`, #663) closes every member
 socket of that account at once (`communityRevoke`); the Room's minute sweep closes one past its hourly re-authentication
 deadline (`authUntil`, never past the session's own), no longer a contributor, banned, or silent past `STALE_MS` with its
-auto-answered pings. A Room wake restores members from their attachments as members, never as players.
+auto-answered pings. A Room wake restores members from their attachments as members, never as players, each heard from
+when the Room last heard it (`heard` in the attachment, written again at most every 30 s of frames), never at the wake,
+so a page coming back to a hibernated Room still finds its dead sockets silent.
 
 **Bounds and cost.** At most 128 members a Room and 3 an account (`COMMUNITY_MAX`, `COMMUNITY_PER_ACCOUNT`); the next is
-closed 4429. A member holds no player slot (`MAX_PLAYERS` is the island's alone), voice or NPC follower count. While any
+closed 4429, after the account's own members silent past `SILENT_MS` (75 s: a page pings every 30 s, a hidden tab's
+timers may run once a minute) are closed as stale, so pages gone without closing (a phone asleep, a network change)
+never keep the account's next page out until the sweep. A member holds no player slot (`MAX_PLAYERS` is the island's alone), voice or NPC follower count. While any
 member is connected the Room keeps its once-a-minute sweep, as it does for a player, and nothing else: a member is
 relayed only what the Room already broadcasts. With the island's `commons` switch off nobody new connects; members
 already in leave at their next sweep or reconnect.
@@ -674,6 +721,7 @@ Names only; values live in Workers secrets and the owner's password manager (`wo
 |---|---|---|---|
 | `ENVIRONMENT` | var | edge and island | `staging` or `production`; must match across the bridge |
 | `SITE_ORIGIN` | var | edge | the app's origin, for redirects, cookies, callbacks and the Origin check |
+| `ISLAND_ORIGIN` | var | edge | the island's https origin, which a Main Island chat's Go there opens (the bootstrap's `island`); unset, Go there stays off |
 | `FEATURES` | var | edge | the edge's flags, above |
 | `OOGA_CHAT_FEATURES` | var | island | the bridge's flags, above |
 | `GITHUB_CLIENT_ID` | var | edge | Ooga Chat's own GitHub OAuth App in this environment (not the island's) |
@@ -705,8 +753,11 @@ To do, by the owner:
 - [x] X developer account "Ooga Chat" on @w_s_bitcoin (pay-per-use, 2026-11-14) and its "Ooga Chat" app: OAuth 2.0
       confidential web app, read only, no email, callbacks `<SITE_ORIGIN>/auth/x/callback` for both environments, its
       client id in both configs' `vars`.
-- [ ] Regenerate the X app's client secret and store it with `wrangler secret put X_CLIENT_SECRET` for each edge; buy
-      credits and set the console's spending limit, then confirm the price of `/2/users/me` there, before turning `x` on.
+- [x] Regenerate the X app's client secret and store it with `wrangler secret put X_CLIENT_SECRET` for each edge; buy
+      credits and set the console's spending limit, then confirm the price of `/2/users/me` there, before turning `x` on
+      (2026-11-25: both edges hold the secret; $40 in credits, a $20 spend cap a billing cycle, User: Read $0.010).
+- [x] Turn `x` on: staging first (2026-11-25, an X sign-in landed one principal with its picture and a session), then
+      production.
 - [ ] Deploy the island's Worker with the `ChatBridge` entrypoint before the edge's first deploy, or the edge's
       deploy fails on the binding.
 - [ ] Before changing any existing Worker's compatibility date, verify WebSocket close and hibernation on staging.

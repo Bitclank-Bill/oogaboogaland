@@ -38,14 +38,23 @@
   };
   const quad = (geo, a, b, c, d, color, emissive, normal) => face(geo, [a, b, c, d], color, emissive, normal);
   const blank = () => ({ verts: [], faces: [], lines: [] });
-  // Preview construction, liveGeometry and cancellation all run from the hub; these meshes belong to the room.
+  // Doorway previews belong to Timechain. A short-lived observer can own its synchronous
+  // build batches instead, including nested kind helpers, without pinning a scene it never enters.
+  let ownerScope = "timechain";
+  const withScope = (scope, build) => {
+    const previous = ownerScope;
+    ownerScope = scope;
+    try { return BL.models.withScope(scope, build); }
+    finally { ownerScope = previous; }
+  };
+  const owned = (build, arg) => BL.models.withScope(ownerScope, build, arg);
   const own = (build) => {
     const read = BL.models.cached(build);
-    return () => BL.models.withScope("timechain", read);
+    return () => owned(read);
   };
   const perRoom = (build) => {
     const read = BL.models.variants(build);
-    return (id) => BL.models.withScope("timechain", read, id);
+    return (id) => owned(read, id);
   };
   const UP = [0, 1, 0], DOWN = [0, -1, 0];
   // What of a convex polygon of [x, z] corners keeps nx·x + nz·z ≤ d (Sutherland–Hodgman against one half-plane).
@@ -145,6 +154,23 @@
     }
     return merge(...parts);
   };
+  // A glass floor's sheen: a glossy reflector (as the Lightning Jet Hangar's runway is: the renderer adds the room's
+  // reflection over what is drawn there, `gloss` of it, with no face of its own) from r0 to r1 out and between
+  // bearings b0 and b1 (radians), in `steps` facets a full turn, its node to be laid face up (turned -90 degrees about
+  // x, so its y runs along the room's -z). WebGL's alone: the interior hides it on Canvas 2D.
+  const glossSheet = (r0, r1, b0, b1, gloss, steps = 96) => {
+    const n = Math.max(4, Math.ceil(steps * (b1 - b0) / TAU)), verts = [], faces = [];
+    for (let i = 0; i <= n; i++) {
+      const b = b0 + (b1 - b0) * i / n, sx = Math.sin(b), cz = Math.cos(b);
+      verts.push(r0 * sx, -r0 * cz, 0, r1 * sx, -r1 * cz, 0);
+    }
+    for (let i = 0; i < n; i++) {
+      const a = 2 * i, q = [a, a + 1, a + 3, a + 2];
+      const area = (verts[3 * q[1]] - verts[3 * q[0]]) * (verts[3 * q[2] + 1] - verts[3 * q[0] + 1]) - (verts[3 * q[1] + 1] - verts[3 * q[0] + 1]) * (verts[3 * q[2]] - verts[3 * q[0]]);
+      faces.push({ i: area > 0 ? q : q.reverse(), color: [0, 0, 0], emissive: 0 });
+    }
+    return { verts, faces, lines: [], castShadow: false, reflector: true, gloss };
+  };
   // A canvas picture `w` by `h`, flat and facing +z about its own middle (planar mapping).
   const flatPicture = (canvas, w, h, emissive = 0.9) => {
     const geo = { verts: [-w / 2, -h / 2, 0, w / 2, -h / 2, 0, w / 2, h / 2, 0, -w / 2, h / 2, 0], faces: [{ i: [0, 1, 2, 3], color: [255, 255, 255], emissive }], lines: [], castShadow: false };
@@ -181,7 +207,7 @@
       node: (name, geometry, x = 0, y = 0, z = 0, o = {}) => {
         let geo = geometry;
         if (typeof geometry === "function") {
-          const sub = { L: into.L, room: into.room, body: [], glow: [], flat: [], nodes: into.nodes, solids: [], seats: [], lights: [], live: into.live, targets: into.targets };
+          const sub = { L: into.L, room: into.room, body: [], glow: [], flat: [], nodes: into.nodes, solids: [], seats: [], lights: [], live: into.live, targets: into.targets, geometries: into.geometries };
           geometry(kit(sub));
           geo = sub.body.length || sub.glow.length ? merge(...sub.body, ...sub.glow) : null;
           if (geo && !sub.body.length) noShadow(geo);
@@ -228,9 +254,14 @@
       // The room's light: overrides of the scene's render options (sky, ground, direct, ambient floor, bloom).
       render: (o) => { into.render = o; },
       wallColor: (c) => { into.wallColor = c; },
+      // The lit strip along the screen's lower edge, where a kind wants its own colour for it.
+      rimColor: (c) => { into.rimColor = c; },
       // A raked hall's colours: its terraces (alternating), their amber nosings and the doorway's landing.
       rakeColors: (o) => { if (o.terrace) into.terrace = o.terrace; if (o.nosing) into.nosing = o.nosing; if (o.landing) into.landing = o.landing; },
-      floorColor: (c) => { into.floorColor = c; }
+      floorColor: (c) => { into.floorColor = c; },
+      // An unpainted floor drawn as glass this opaque (over a kind's own under-floor), as the glass cases are, paling
+      // toward a glancing view `grazing` as much as glass does (the renderer's `glassGrazing`, less under a sheen).
+      floorGlass: (opacity, grazing = 1) => { into.floorGlass = opacity; into.floorGrazing = grazing; }
     };
     return K;
   };
@@ -391,7 +422,7 @@
       // The amber strip along the screen's lower edge, just inside it, and the skirting round the floor.
       const s0 = ROOMS.onSphere(L, a0, e0, 0.996), s1 = ROOMS.onSphere(L, a1, e1, 0.996);
       const strip = [[s0.x, s0.y - 0.04, s0.z], [s1.x, s1.y - 0.04, s1.z], [s1.x, s1.y + 0.04, s1.z], [s0.x, s0.y + 0.04, s0.z]];
-      for (const piece of outsideDoor(strip)) face(glowing, piece, C.amber, 1, inward(piece));
+      for (const piece of outsideDoor(strip)) face(glowing, piece, into.rimColor || C.amber, 1, inward(piece));
       const fy = L.yMin + 0.07, fr = ROOMS.radiusAt(L, fy) * 0.997;
       const skirt = [[fr * Math.sin(a0), fy - 0.02, -fr * Math.cos(a0)], [fr * Math.sin(a1), fy - 0.02, -fr * Math.cos(a1)], [fr * Math.sin(a1), fy + 0.02, -fr * Math.cos(a1)], [fr * Math.sin(a0), fy + 0.02, -fr * Math.cos(a0)]];
       for (const piece of outsideDoor(skirt)) face(glowing, piece, C.skirt, 0.8, inward(piece));
@@ -427,7 +458,7 @@
     if (canvas) {
       const F = floorMap(L, into.floorSize ? into.floorSize.scale : 0);
       geo.imageSurface = { canvas, version: 1, rect: [-F.rf, -F.rf, 2 * F.rf, 2 * F.rf], tessellated: true };
-    }
+    } else if (into.floorGlass) { geo.glassOpacity = into.floorGlass; geo.glassGrazing = into.floorGrazing; noShadow(geo); }
     return geo;
   });
   // A raked hall's floor: the terraces stepping down round the focus, each with an amber nosing, the landing at the
@@ -793,8 +824,8 @@
     return geo;
   };
   BL.timechainRoomModels = {
-    build, plan, prepareSteps, geometries, picture, liveGeometry, flatPicture, sphere: sphereParts, domeMap, floorMap, paintKit, KINDS, COLORS: C, MARK_BIAS, EXIT_HEADER,
+    build, plan, prepareSteps, geometries, picture, liveGeometry, flatPicture, sphere: sphereParts, domeMap, floorMap, paintKit, KINDS, COLORS: C, MARK_BIAS, EXIT_HEADER, withScope,
     doorway, doorBulbs, bulbsOf, solo,
-    helpers: { face, quad, blank, clip, own, perRoom, cylinder, ballGeo, slabGeo, sectorGeo, litWord, UP, DOWN }
+    helpers: { face, quad, blank, clip, own, perRoom, owned, cylinder, ballGeo, slabGeo, sectorGeo, glossSheet, litWord, UP, DOWN }
   };
 })();

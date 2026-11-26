@@ -1,8 +1,12 @@
 // Builds and stages Ooga Chat, the standalone app in src/ooga-chat/: `node scripts/ooga-chat.mjs [dir] [--fixtures]`,
 // default untracked/ooga-chat (docs/ooga-chat-app.md). It shares no output with the island: it refuses the island's
 // staging folders and the repository's own, and it only clears a folder an earlier run of this script staged.
-// index.html's stylesheets and scripts become one same-origin css/ and js/ file each, named by their hash, so the page
-// carries no inline code under its policy (`script-src 'self'; style-src 'self'`), and every picture under art/ the
+// index.html's stylesheets become one same-origin css/ file and its scripts one js/ file, named by their hash, so the
+// page carries no inline code under its policy (`script-src 'self'; style-src 'self'`), but for the scripts tagged
+// `data-defer="<group>"`: each group is staged as js/ooga-chat-<group>-<hash>.js, kept out of the first load and named
+// in `BL.oogaChatScripts` at the head of the first-load script, which fetches it when a tab needs it or once the page
+// is idle (ooga-chat-chunks.js); a stylesheet tagged the same way is that group's own css/ooga-chat-<group>-<hash>.css,
+// named in `BL.oogaChatScripts` as `<group>.css` for that group's code to link; the service worker keeps them all. Every picture under art/ the
 // views name moves to art/<name>-<hash>.<ext>. The page may load only its own modules and the shared ones in SHARED:
 // anything else (a renderer, a scene, the island's socket) fails the build. `--fixtures` also stages fixture.html with
 // the offline fixture adapter, for review only; without it no fixture code is in the folder. build.json records the
@@ -17,6 +21,8 @@ import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
 import { gzipSync } from "node:zlib";
 import { encode, ico, touchIcon } from "./distribution-icons.mjs";
+import { writeCharacters } from "./characters.mjs";
+import { catalogBaseline } from "./character-catalog-build.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const app = join(root, "src", "ooga-chat");
@@ -24,8 +30,23 @@ const app = join(root, "src", "ooga-chat");
 export const SHARED = ["../js/sign-glyphs.js", "../js/native-icons.js", "../js/donations.js", "../js/banana-panel.js", "../js/qr.js", "../js/banana-icon.js",
   "../js/jumbotron-font.js", "../js/factory-kiosk-core.js", "../js/factory-kiosk.js", "../js/donation-popup.js", "../js/chat-policy.js", "../js/emoji-data.js", "../js/reaction-policy.js",
   "../js/zone-map.js", "../js/commons-log.js", "../js/format-large.js", "../js/roster-panel.js", "../js/contributor-identities.js", "../js/activity-repos.js",
-  "../js/audience-tiles.js", "../js/reaction-bar.js", "../js/voice-handoff.js", "../js/duel-listening.js"];
-// What a first visit may cost over the wire (index.html, the script, the stylesheet and the art it shows), gzipped. The
+  "../js/audience-tiles.js", "../js/reaction-bar.js", "../js/voice-handoff.js", "../js/duel-listening.js", "../js/chat-hosts.js",
+  // The island view (island-view.js, with the hosted chats), and its 3D view: the game's own renderer, its models and the
+  // cast to build each speaker's Ooga from, what dresses it as the island does (the hat and wardrobe catalogs and the
+  // modules that put them on a body), and the baked scenery's reader (OPT_IN, fetched only for a device that can carry
+  // it); and what a walker's look may still need, each fetched only once one wears it: the hats' geometry (`hats`), the
+  // wardrobe's pieces (`wardrobe`) and the island's props for a jetpack (`gear`).
+  "../js/island-view-data.js", "../js/island-view.js", "../js/math.js", "../js/daylight.js", "../js/scene.js", "../js/compact-geometry.js",
+  "../js/mirror-ripples.js", "../js/mirror-body.js", "../js/dsb-water.js", "../js/gl-renderer.js", "../js/build-tasks.js", "../js/models.js", "../js/blaze.js",
+  "../js/hero-body.js", "../js/characters.js", "../js/characters.gen.js", "../js/character-catalog-schema.js", "../js/island-scene.js", "../js/equipment-hats.js",
+  "../js/equipment-hats.gen.js", "../js/character-equipment.js", "../js/equipment-wardrobe.js", "../js/equipment-wardrobe.gen.js",
+  "../js/character-wardrobe.js", "../js/island-view-live.js", "../js/equipment-hat-data.gen.js", "../js/equipment-wardrobe-data.gen.js",
+  "../js/hub-models.js"];
+// Deferred groups a visit fetches only on the visitor's word, never ahead of it: kept out of the idle prefetch
+// (ooga-chat-chunks.js) and the service worker's shell, so an install never downloads them either.
+export const OPT_IN = ["live", "hats", "wardrobe", "gear"];
+// What a first visit may cost over the wire (index.html, the first-load script, the stylesheet and the art it shows),
+// gzipped, never the deferred chunks. The
 // staged foundation measured about 91 KB, most of it the sign-in picture. The original picture at Retina size (about
 // 80 KB in place of the 430-pixel stand-in's 58), the island's Bananas panel with donations.js (#656, about 15 KB) and
 // its Feed the Oogas kiosk (donation-popup.js, factory-kiosk.js, qr.js and the jumbotron's font, about 28 KB) and
@@ -37,9 +58,18 @@ export const SHARED = ["../js/sign-glyphs.js", "../js/native-icons.js", "../js/d
 // only when the picker opens would take most of that back; that needs the build to stage a second script. Ooga Chat's
 // own voice client (#654: ooga-chat-media.js, about 14 KB) and the Commons' name field (about 1 KB) bring it to about
 // 229.5 KB. Each player's volume and mute in the Ooga Chat panel, the optional duel muting (duel-listening.js) and the
-// voice client's handoffs between the app and the island (#766, about 5.5 KB) bring it to about 237.5 KB. The build
-// fails past this.
-export const FIRST_LOAD_BUDGET = 244 * 1024;
+// voice client's handoffs between the app and the island (#766, about 5.5 KB) bring it to about 237.5 KB (241.2 KB by
+// the time it was split). Then every tab but Ooga Chat moved into a chunk of its own, fetched once the first view has
+// painted (Bananas with Feed the Oogas and donations.js, about 45 KB; Contributing Oogas, Online Oogas and The Commons
+// with their island modules, about 24 KB), which took the first load to about 176.6 KB. The build fails past this, set
+// just above it, so a tab's code cannot slip back into the first load unnoticed. The emoji bar and its picker with the
+// whole emoji list (emoji-data.js and reaction-bar.js, about 24 KB), wanted only signed in, then moved into a chunk of
+// their own too, once reaction-policy.js read the list when first asked rather than at load: about 153.3 KB, then 154.1 KB
+// with the voice links and listeners in Online Oogas (#861) and each chunk's guard against running twice. Hosted chats
+// (docs/ooga-chat-hosts.md) put their views and look in a chunk of their own, `hosts`, with its own stylesheet, and only
+// their glue in the first load (the adapter's routes, the roster's ranks, the chosen chat, the tile menu's hook): 156.0 KB.
+// On 2026-11-23 the maintainer raised the budget to 256 KB for hosted chats, the first load then about 155.9 KB.
+export const FIRST_LOAD_BUDGET = 256 * 1024;
 // The island's own rules for the panels the app shows as the island does (src/style.css), taken by selector each time
 // the app builds, so the two look the same from one source: every rule whose selectors begin with one of ISLAND_RULES
 // (a rule's other selectors, another panel's, left behind), in an @media, @supports or @container block too, and every
@@ -49,8 +79,12 @@ export const ISLAND_RULES = [".roster", ".players-", ".chat-", ".section-head", 
   ".help", ".link", ".account", ".foot-button", ".foot-primary", ".cloud-status", ".panel > .cloud-roster", ".cloud-tile",
   ".cloud-face", ".cloud-portrait", ".cloud-react", ".cloud-hand", ".cloud-pop", ".cloud-name", ".cloud-role",
   ".cloud-mic", ".cloud-foot", ".cloud-mute", ".cloud-voice", ".reaction", ".panel-foot", ".voice-handoff"];
-// Pictures the app loads only when they are wanted, never on a first visit: the face sheet, when a stats strip opens.
-export const LAZY_ART = ["ooga-faces.png"];
+// Pictures the app loads only when they are wanted, never on a first visit: the face sheet, when a stats strip opens, and
+// the island view's map, when a chat's speaker walks its island.
+export const LAZY_ART = ["ooga-faces.png", "island-view-main.webp"];
+// Smaller copies of a picture in a view's srcset, which a visit loads in place of the full one: the first load counts
+// only the full one, the most a visit can fetch.
+export const ALTERNATE_ART = ["sign-in-island-520.webp", "sign-in-island-680.webp"];
 export const islandRules = (css, prefixes = ISLAND_RULES) => {
   const text = css.replace(/\/\*[\s\S]*?\*\//g, "");
   const names = prefixes.map((prefix) => prefix.replace(/^[.#]/, ""));
@@ -108,7 +142,7 @@ const hash = (bytes) => createHash("sha256").update(bytes).digest("hex").slice(0
 // colour, at most `fill` of the side (a maskable icon keeps inside the platform's safe circle). The favicons are the
 // island's set (distribution-icons.mjs): 32px and 64px PNGs, here the mark on a rounded square of the theme colour,
 // favicon.ico holding both, and the Apple touch icon the 64px one at twice its size on the theme colour.
-export const APP = { name: "Ooga Chat", description: "Listen to the island. Speak from the clouds.", theme: "#0a0a0b" };
+export const APP = { name: "Ooga Chat", description: "Voice chats from Ooga Booga Land: join one and ask to speak.", theme: "#0a0a0b" };
 export const ICON_SIZES = [{ size: 192, fill: 0.75, purpose: "any" }, { size: 512, fill: 0.75, purpose: "any" }, { size: 512, fill: 0.5, purpose: "maskable" }];
 export const FAVICON_SIZES = [32, 64];
 const OUTLINE = "#2b1b10", DOT = "#b18aff";
@@ -167,9 +201,16 @@ export const favicon = (size, mark = cloudMark()) => {
 };
 
 const read = (page) => readFileSync(join(app, page), "utf8");
+// A script tag, with the group it is deferred to, if any.
+const SCRIPT_TAG = /^([ \t]*)<script src="([^"]+)"(?: data-defer="([a-z]+)")?><\/script>\r?\n/gm;
+const SHEET_TAG = /^([ \t]*)<link rel="stylesheet" href="([^"]+)"(?: data-defer="([a-z]+)")?>\r?\n/gm;
 const listOf = (html, page) => {
-  const sheets = [...html.matchAll(/^[ \t]*<link rel="stylesheet" href="([^"]+)">\r?\n/gm)].map((m) => m[1]);
-  const scripts = [...html.matchAll(/^[ \t]*<script src="([^"]+)"><\/script>\r?\n/gm)].map((m) => m[1]);
+  const links = [...html.matchAll(SHEET_TAG)], sheets = links.filter((m) => !m[3]).map((m) => m[2]);
+  // A deferred group's own stylesheet, by group; only a group with scripts may have one.
+  const styles = new Map(links.filter((m) => m[3]).map((m) => [m[3], m[2]]));
+  const tags = [...html.matchAll(SCRIPT_TAG)], scripts = tags.map((m) => m[2]);
+  // Every script's group, "" for the first load; the last script (the app) always loads first.
+  const groups = new Map(tags.map((m) => [m[2], m[3] || ""]));
   if (!sheets.length || !scripts.length) throw new Error(`${page}: expected stylesheet links and script tags`);
   for (const src of scripts) if (!SHARED.includes(src) && !/^ooga-chat-[a-z-]+\.js$/.test(src)) {
     throw new Error(`${page}: ${src} is neither an Ooga Chat module nor a shared one (scripts/ooga-chat.mjs SHARED)`);
@@ -178,7 +219,9 @@ const listOf = (html, page) => {
     throw new Error(`${page}: inline script, style or handler; the policy allows only same-origin files`);
   }
   if (!html.includes(`content="${POLICY}"`)) throw new Error(`${page}: its content policy differs from scripts/ooga-chat.mjs POLICY`);
-  return { sheets, scripts };
+  if (groups.get(scripts.at(-1))) throw new Error(`${page}: the app itself cannot be deferred`);
+  for (const group of styles.keys()) if (![...groups.values()].includes(group)) throw new Error(`${page}: a stylesheet is deferred to ${group}, which has no scripts`);
+  return { sheets, scripts, groups, styles };
 };
 
 // The two entries differ only by the fixture adapter, loaded just before the app starts.
@@ -187,7 +230,8 @@ export const entries = () => {
   const main = listOf(index, "index.html"), review = listOf(fixture, "fixture.html");
   if (main.scripts.includes("ooga-chat-fixtures.js") || index.includes("data-adapter=")) throw new Error("index.html: the production entry must not load or select fixtures");
   const expected = [...main.scripts.slice(0, -1), "ooga-chat-fixtures.js", main.scripts.at(-1)];
-  if (review.scripts.join() !== expected.join() || review.sheets.join() !== main.sheets.join()) {
+  if (review.scripts.join() !== expected.join() || review.sheets.join() !== main.sheets.join() || main.scripts.some((src) => review.groups.get(src) !== main.groups.get(src))
+    || [...main.styles].join() !== [...review.styles].join()) {
     throw new Error("fixture.html: must load index.html's files plus ooga-chat-fixtures.js just before ooga-chat-app.js");
   }
   return { index, fixture, main, review };
@@ -220,6 +264,9 @@ const guard = (out) => {
 export const build = (out, { fixtures = false } = {}) => {
   out = resolve(root, out);
   guard(out);
+  // The 3D view draws each speaker's own Ooga from the cast (characters.gen.js, gitignored), joined first as the island's
+  // build joins it.
+  writeCharacters();
   const { index, fixture, main, review } = entries();
   rmSync(out, { recursive: true, force: true });
   for (const dir of ["js", "css", "art", "icons"]) mkdirSync(join(out, dir), { recursive: true });
@@ -244,9 +291,37 @@ export const build = (out, { fixtures = false } = {}) => {
     });
     return `${js}\n`;
   };
+  // Each deferred group first, so the first-load script can name their hashed files.
+  const deferredOf = (entry) => [...new Set(entry.scripts.map((src) => entry.groups.get(src)).filter(Boolean))];
+  // A chunk that runs twice (a late copy after a timeout, ooga-chat-chunks.js) returns at its head: its group is here.
+  // The `live` chunk also carries the cast this build bundled (scripts/character-catalog-build.mjs `catalogBaseline`),
+  // which the island's published catalog is applied against (ooga-chat-catalog.js).
+  const baselineOf = (group) => group === "live" ? `\nwindow.BL.oogaChatCharacterBaseline = ${JSON.stringify(catalogBaseline(root))};\n` : "";
+  const chunkOf = (group) => `(() => {\nif (window.BL && window.BL.oogaChatChunks && window.BL.oogaChatChunks.present(${JSON.stringify(group)})) return;\n\n${bundle(main.scripts.filter((src) => main.groups.get(src) === group))}${baselineOf(group)}})();\n`;
+  const chunks = Object.fromEntries(deferredOf(main).map((group) => [group, chunkOf(group)]));
+  const scripts = Object.fromEntries(Object.entries(chunks).map(([group, code]) => [group, named("js", `ooga-chat-${group}`, "js", code)]));
+  const styleOf = (path) => {
+    const text = `${read(path).trim().replace(/\r\n/g, "\n")}\n`;
+    if (/url\(/.test(text)) throw new Error("ooga-chat: a stylesheet loads a url(); name pictures from the views instead");
+    return text;
+  };
+  const styles = Object.fromEntries([...main.styles].map(([group, path]) => [`${group}.css`, named("css", `ooga-chat-${group}`, "css", styleOf(path))]));
+  // The island view's baked scenery (island-scene.js, scripts/island-scene.mjs): its layers staged as they are, gzipped,
+  // under scene/<hash>/, the folder named by them all, so a new bake is a new address; the page reads the folder from
+  // `BL.oogaChatScenery` (from source it reads art/, where the layers are kept).
+  const sceneFiles = readdirSync(join(app, "art")).filter((file) => /^island-scene-[\w-]+\.bin\.gz$/.test(file)).sort();
+  let sceneDir = "";
+  if (sceneFiles.length) {
+    const layers = sceneFiles.map((file) => [file, readFileSync(join(app, "art", file))]);
+    sceneDir = `scene/${hash(Buffer.concat(layers.map(([, bytes]) => bytes)))}`;
+    mkdirSync(join(out, sceneDir), { recursive: true });
+    for (const [file, bytes] of layers) write(`${sceneDir}/${file}`, bytes);
+  }
+  const head = `window.BL = window.BL || {};\nwindow.BL.oogaChatScripts = ${JSON.stringify({ ...scripts, ...styles })};\n${sceneDir ? `window.BL.oogaChatScenery = ${JSON.stringify(`/${sceneDir}`)};\n` : ""}\n`;
+  const firstLoad = (entry) => `${head}${bundle(entry.scripts.filter((src) => !entry.groups.get(src)))}`;
   const used = new Set();
-  const js = bundle(main.scripts);
-  for (const [file, path] of art) if (js.includes(path)) used.add(file);
+  const js = firstLoad(main);
+  for (const [file, path] of art) if ([js, ...Object.values(chunks)].some((code) => code.includes(path))) used.add(file);
   for (const file of pictures) if (!used.has(file)) throw new Error(`ooga-chat: art/${file} is staged but no script shows it`);
   const mark = cloudMark();
   const icons = ICON_SIZES.map(({ size, fill, purpose }) => ({ size, purpose,
@@ -270,25 +345,27 @@ export const build = (out, { fixtures = false } = {}) => {
       let first = true;
       return (text) => text.replace(pattern, (_, indent) => first ? (first = false, `${indent}${tag}\n`) : "");
     };
-    const shell = [once(/^([ \t]*)<link rel="stylesheet" href="[^"]+">\r?\n/gm, `<link rel="stylesheet" href="${sheet}">`),
-      once(/^([ \t]*)<script src="[^"]+"><\/script>\r?\n/gm, `<script src="${scriptPath}"></script>`)].reduce((text, step) => step(text), html)
+    const shell = [once(SHEET_TAG, `<link rel="stylesheet" href="${sheet}">`),
+      once(SCRIPT_TAG, `<script src="${scriptPath}"></script>`)].reduce((text, step) => step(text), html)
       .replace('<meta name="ooga-chat-build" content="dev">', `<meta name="ooga-chat-build" content="${buildId}">${head}`);
     if (!shell.includes(`content="${buildId}"`) || (shell.match(/<script /g) || []).length !== 1) throw new Error(`ooga-chat: ${page} did not stage`);
     write(page, shell);
   };
   const script = named("js", "ooga-chat", "js", js);
-  const buildId = hash(`${js}${css}`);
+  const buildId = hash(`${js}${Object.values(chunks).join("")}${css}${Object.values(styles).join("")}`);
   // Only the production entry is installable: the review entry links no manifest and registers no worker.
   stage(index, "index.html", script, buildId, `${iconLinks}\n  <link rel="manifest" href="/manifest.webmanifest">\n  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">`);
   write("manifest.webmanifest", `${JSON.stringify({ id: "/", name: APP.name, short_name: APP.name, description: APP.description, start_url: "/", scope: "/",
     display: "standalone", background_color: APP.theme, theme_color: APP.theme,
     icons: icons.map((icon) => ({ src: icon.path, sizes: `${icon.size}x${icon.size}`, type: "image/png", purpose: icon.purpose })) }, null, 2)}\n`);
-  // The worker's shell: the page and every hashed file of this build, never the fixture entry, the manifest or the 404.
-  const shell = ["/", ...files.filter((path) => /^(js|css|art|icons)\//.test(path)).sort().map((path) => `/${path}`)];
+  // The worker's shell: the page and every hashed file of this build, never the fixture entry, the manifest, the 404 or
+  // an opt-in chunk.
+  const optIn = new Set(OPT_IN.map((group) => scripts[group]).filter(Boolean));
+  const shell = ["/", ...files.filter((path) => /^(js|css|art|icons)\//.test(path) && !optIn.has(`/${path}`)).sort().map((path) => `/${path}`)];
   const worker = read("service-worker.js").replace('const VERSION = "dev";', `const VERSION = ${JSON.stringify(buildId)};`).replace("const SHELL = [];", `const SHELL = ${JSON.stringify(shell)};`);
   if (!worker.includes(buildId) || worker.includes("const SHELL = [];")) throw new Error("ooga-chat: the service worker did not stage");
   write("sw.js", worker);
-  if (fixtures) stage(fixture, "fixture.html", named("js", "ooga-chat-fixture", "js", bundle(review.scripts)), buildId, iconLinks);
+  if (fixtures) stage(fixture, "fixture.html", named("js", "ooga-chat-fixture", "js", firstLoad(review)), buildId, iconLinks);
   write("404.html", `<!doctype html>
 <html lang="en">
 <head>
@@ -301,7 +378,7 @@ export const build = (out, { fixtures = false } = {}) => {
 </html>
 `);
   // Cloudflare's _headers: the policy on every page, no caching for the entry pages, a year for hashed files.
-  const hashed = files.filter((path) => /^(js|css|art|icons)\//.test(path)).sort();
+  const hashed = files.filter((path) => /^(js|css|art|icons|scene)\//.test(path)).sort();
   write("_headers", `/*
   Content-Security-Policy: ${POLICY}; frame-ancestors 'none'
   Referrer-Policy: no-referrer
@@ -326,11 +403,14 @@ ${hashed.map((path) => `\n/${path}\n  Cache-Control: public, max-age=31536000, i
     const bytes = readFileSync(join(out, path));
     return { path, bytes: bytes.length, gzip: gzipSync(bytes).length };
   });
-  const lazy = (path) => LAZY_ART.some((name) => path.startsWith(`art/${basename(name, extname(name))}-`));
-  const firstLoad = inventory.filter((file) => file.path === "index.html" || file.path === sheet.slice(1) || file.path === script.slice(1) || file.path.startsWith("art/") && !lazy(file.path))
+  const lazy = (path) => [...LAZY_ART, ...ALTERNATE_ART].some((name) => art.get(name) === `/${path}`);
+  const first = inventory.filter((file) => file.path === "index.html" || file.path === sheet.slice(1) || file.path === script.slice(1) || file.path.startsWith("art/") && !lazy(file.path))
     .reduce((sum, file) => sum + file.gzip, 0);
-  if (firstLoad > FIRST_LOAD_BUDGET) throw new Error(`ooga-chat: first load is ${firstLoad} bytes gzipped, over FIRST_LOAD_BUDGET (${FIRST_LOAD_BUDGET})`);
-  const manifest = { app: "ooga-chat", build: buildId, bootstrap: 1, fixtures, firstLoad, scripts: main.scripts.map((src) => src.replace(/^\.\.\//, "")), files: inventory };
+  if (first > FIRST_LOAD_BUDGET) throw new Error(`ooga-chat: first load is ${first} bytes gzipped, over FIRST_LOAD_BUDGET (${FIRST_LOAD_BUDGET})`);
+  const gzipOf = (path) => inventory.find((file) => `/${file.path}` === path).gzip;
+  const manifest = { app: "ooga-chat", build: buildId, bootstrap: 1, fixtures, firstLoad: first, scripts: main.scripts.map((src) => src.replace(/^\.\.\//, "")),
+    chunks: Object.fromEntries(Object.entries(scripts).map(([group, path]) => [group, { path: path.slice(1), gzip: gzipOf(path),
+      scripts: main.scripts.filter((src) => main.groups.get(src) === group).map((src) => src.replace(/^\.\.\//, "")) }])), files: inventory };
   writeFileSync(join(out, "build.json"), `${JSON.stringify(manifest, null, 2)}\n`);
   return manifest;
 };
@@ -356,7 +436,7 @@ const serve = async (out, port, manifest) => {
   const { createServer } = await import("node:http");
   // Only what the build staged, never _headers or build.json.
   const servable = new Set(manifest.files.map((file) => file.path).filter((path) => path !== "_headers"));
-  const TYPES = { ".webmanifest": "application/manifest+json", ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".jpg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".json": "application/json; charset=utf-8" };
+  const TYPES = { ".webmanifest": "application/manifest+json", ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".jpg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".json": "application/json; charset=utf-8", ".gz": "application/gzip" };
   const rules = readFileSync(join(out, "_headers"), "utf8");
   createServer((request, response) => {
     const path = decodeURIComponent(new URL(request.url, "http://localhost").pathname);
@@ -373,6 +453,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const manifest = build(dir, { fixtures: args.includes("--fixtures") });
   const kb = (n) => `${(n / 1024).toFixed(1)} KB`;
   for (const file of manifest.files) console.log(`  ${kb(file.bytes).padStart(9)}  gzip ${kb(file.gzip).padStart(8)}  ${file.path}`);
-  console.log(`staged ${resolve(root, dir)}: build ${manifest.build}, first load ${kb(manifest.firstLoad)} gzipped of a ${kb(FIRST_LOAD_BUDGET)} budget${manifest.fixtures ? ", with fixture.html" : ""}`);
+  const later = Object.entries(manifest.chunks).map(([group, chunk]) => `${group} ${kb(chunk.gzip)}`).join(", ");
+  console.log(`staged ${resolve(root, dir)}: build ${manifest.build}, first load ${kb(manifest.firstLoad)} gzipped of a ${kb(FIRST_LOAD_BUDGET)} budget, then ${later || "nothing"} as tabs need it${manifest.fixtures ? ", with fixture.html" : ""}`);
   if (args.includes("--serve")) await serve(resolve(root, dir), Number(process.env.PORT) || 8090, manifest);
 }

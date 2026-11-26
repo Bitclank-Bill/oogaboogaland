@@ -1615,6 +1615,16 @@
     dismissOutside(el.recipe, closeRecipe);
     dismissOutside(el.board, () => mainBoard.close());
     dismissOutside($("donation-popup"), () => BL.donationPopup.closeOutside());
+    // The Genesis Museum (timechain-room-genesis.js): its Proof of Knowledge panel, which the room fills and shows, and
+    // the whitepaper's reader, whose strip the room slides. The panel's own button hides it; the reader's closes it,
+    // as a press outside it does.
+    const genesis = { portal: $("genesis-portal"), body: $("genesis-portal-body"), reader: $("wp-reader"), view: $("wp-reader-view"), strip: $("wp-reader-strip"), thumb: $("wp-reader-thumb"), page: $("wp-reader-page"), about: $("wp-reader-about") };
+    const showGenesisPortal = (shown) => { genesis.portal.hidden = !shown; };
+    const openReader = () => { if (!genesis.reader.open) genesis.reader.showModal(); };
+    const closeReader = () => { if (genesis.reader.open) genesis.reader.close(); };
+    on(genesis.portal, "click", (e) => { const button = e.target.closest("[data-action='genesis-portal-close']"); if (button) { button.blur(); showGenesisPortal(false); } });
+    on(genesis.reader, "click", (e) => { const button = e.target.closest("[data-action='reader-close']"); if (button) { button.blur(); closeReader(); } });
+    dismissOutside(genesis.reader, closeReader);
     // The prompt is written to be pasted, so it leaves in one click.
     const copyRecipe = (button) => {
       const text = el.recipeText.textContent;
@@ -1997,7 +2007,7 @@
         Object.defineProperties(this, Object.getOwnPropertyDescriptors(next));
         return this;
       },
-      el, openFeed, openRecipe, closeRecipe, dismissOutside, openBoard, closeBoard, updateBoard, restoreBoards, setPanelsHidden, foldPanels, setRosterRow, setStats, setAct, setMode, setWeaponSkin, setDestinations, setGorilla, setGorillaSmashPower, setDetachedView, fadeDetachedName, setAreaLabel, setPrimary, setWeapon, setMagazine, setJetpack, setSubtitle, onAction, toast, tooltip, hint, hideHint, letterSign, selectTab, onPreset, setPileValueVisible, dispose };
+      el, genesis, showGenesisPortal, openReader, closeReader, openFeed, openRecipe, closeRecipe, dismissOutside, openBoard, closeBoard, updateBoard, restoreBoards, setPanelsHidden, foldPanels, setRosterRow, setStats, setAct, setMode, setWeaponSkin, setDestinations, setGorilla, setGorillaSmashPower, setDetachedView, fadeDetachedName, setAreaLabel, setPrimary, setWeapon, setMagazine, setJetpack, setSubtitle, onAction, toast, tooltip, hint, hideHint, letterSign, selectTab, onPreset, setPileValueVisible, dispose };
   };
   // Detached panels can be visible together. Each has a view of the same account and voice state.
   const ROOM_WORDS = { replaced: "open in another tab", full: "island full" };
@@ -2042,7 +2052,8 @@
     $("recipe-note").hidden = !refused;
     if (!recipe.open) recipe.showModal();
   };
-  const showAccount = ({ backend, me, room, online }) => {
+  const showAccount = (state) => {
+    const { backend, me, room } = state, online = BL.cloudPanel ? BL.cloudPanel.online(state) : state.online;
     const live = !!me && room === "live", words = live ? `${online} online` : ROOM_WORDS[room] || "";
     const top = accountTop(), topTip = me ? `Signed in as ${me.display} · Sign out` : "Sign in with GitHub · needs your own Ooga";
     if (top.hidden !== !backend) top.hidden = !backend;
@@ -2057,6 +2068,11 @@
     writeAccount("account-name", "hidden", !me);
     writeAccount("account-login", "hidden", !!me);
     writeAccount("account-logout", "hidden", !me);
+    // The studio, where a signed-in player chooses what their own Ooga wears (scene-studio.js), where the Worker keeps it.
+    const own = me && state.equipment ? BL.net.ownCharacter?.() : null;
+    writeAccount("account-look", "hidden", !own);
+    // From the site's root: a routed address (/lightning) outranks `?scene=`.
+    if (own) writeAccount("account-look", "href", new URL(`/?scene=studio&character=${encodeURIComponent(own.handle)}`, location.href).href);
     writeAccount("account-room", "textContent", words);
     writeAccount("account-room", "hidden", !me || !words);
     writeAccount("account-rejoin", "hidden", !me || !ROOM_WORDS[room]);
@@ -2070,10 +2086,12 @@
     // returning visitor's voice failed rather than offering an unexplained Unmute.
     const inVoice = voice.enabled || voice.returning || voice.reconnecting, micOn = inVoice && !reason;
     const failed = micOn && !voice.reconnecting && voiceFailure, asMic = micOn && !voice.reconnecting && !voiceFailure;
-    writeAccount("account-mute", "hidden", !live);
+    // On a chat's island (chat-copy.js) the island's voice waits paused: its controls step aside for the chat's.
+    const copy = !!state.copy;
+    writeAccount("account-mute", "hidden", !live || copy);
     writeAccount("account-mute", "disabled", !micOn);
     writeAccount("account-mute", "textContent", micOn && voice.reconnecting ? "Reconnecting voice" : failed ? `Voice: ${voiceFailure}` : asMic && !voice.muted ? "Mute" : "Unmute");
-    writeAccount("account-voice", "hidden", !live || inVoice);
+    writeAccount("account-voice", "hidden", !live || inVoice || copy);
     writeAccount("account-voice", "textContent", reason ? reason : voice.joining ? "Joining…" : voiceFailure ? `Voice: ${voiceFailure}` : "Join voice");
     writeAccount("account-voice", "disabled", !!reason);
     // A blocked WebRTC explains itself in a tooltip, and only while it is the reason: a VPN's leak protection is what
@@ -2083,7 +2101,7 @@
       : "";
     writeAccount("account-voice", "title", inVoice ? "" : voiceTip);
     writeAccount("account-mute", "title", failed ? voiceTip : "");
-    writeAccount("account-voice-leave", "hidden", !live || !inVoice);
+    writeAccount("account-voice-leave", "hidden", !live || !inVoice || copy);
     const pressed = String(asMic && voice.muted), onlineDot = String(live);
     for (const row of fieldsFor("account")) if (row.dataset.live !== onlineDot) row.dataset.live = onlineDot;
     const mic = asMic ? voice.muted ? "muted" : "live" : "";

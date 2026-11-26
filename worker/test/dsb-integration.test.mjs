@@ -32,6 +32,8 @@ const roomClass = (extra = {}) => {
   // constructor gives one without INSPECTOR_IDS.
   context.Room.prototype.inspect = protocol.inspectReporter(null, {}, "Room", () => "", () => null);
   context.Room.prototype.world = protocol.worldReporter(null, {}, () => null);
+  context.Room.prototype.catalog = protocol.roomCatalog.create({}, context.CAST_ROWS, protocol.castIndex);
+  context.Room.prototype.env = {};
   return context.Room;
 };
 test("room broadcasts DSB zone changes, persists them and keeps ownership enforcement", () => {

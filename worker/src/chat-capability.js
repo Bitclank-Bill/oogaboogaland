@@ -10,6 +10,7 @@
 
 import { BridgeRefusal } from "./chat-bridge-protocol.js";
 import { oogatron } from "./contributor-policy.js";
+import { contributorDecision } from "./contributor-access.js";
 
 export const POLICY = "obl-contributor-v1";
 const GITHUB_ID = /^[1-9][0-9]{0,15}$/;
@@ -38,16 +39,18 @@ export const decideCapability = async (env, principal, contributorFor, now = Dat
   if (env.DB) {
     let row;
     try { row = await env.DB.prepare(COLLISION).bind(id, login).first(); }
-    catch { return answer("unknown", null, "unavailable"); }
+    // `ban-unread`: the ban and collision could not be read, which a hosted chat (that waives the contributor rule but
+    // never a ban) must refuse on, unlike an unread contributor snapshot.
+    catch { return answer("unknown", null, "ban-unread"); }
     if (row && row.banned_at) return answer("ineligible", null, "banned");
     // A login another id holds (renamed away on GitHub, then registered by someone else) is not this account's Ooga.
     if (row && row.collision) return answer("ineligible", null, "identity-collision");
   }
-  const owned = await contributorFor(login, id, oogatron(env));
-  if (owned) return answer("eligible", owned.handle);
-  return typeof contributorFor.fresh !== "function" || contributorFor.fresh() ? answer("ineligible", null, "not-contributor") : answer("unknown", null, "unavailable");
+  const decision = await contributorDecision(contributorFor, login, id, oogatron(env));
+  if (decision.character) return answer("eligible", decision.character.handle);
+  return decision.fresh ? answer("ineligible", null, "not-contributor") : answer("unknown", null, "unavailable");
 };
 
-export const capabilityOps = ({ contributorFor, now = Date.now }) => ({
-  capability: { run: (env, envelope) => decideCapability(env, envelope.principal, contributorFor, now) },
+export const capabilityOps = ({ contributorFor, contributorForEnv, now = Date.now }) => ({
+  capability: { run: (env, envelope) => decideCapability(env, envelope.principal, contributorForEnv ? contributorForEnv(env) : contributorFor, now) },
 });

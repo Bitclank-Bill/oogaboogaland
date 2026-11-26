@@ -29,6 +29,10 @@
 // together), and solid again only when the last one goes. Its nameplate has a purple dot in place of the green; its
 // reactions come from the room's audience feed (`kind: "react"`, by its id) and its raised hand from its entry. A cloud
 // body is never picked and never blocks anyone: the clouds are scenery.
+// A hosted chat's copy (chat-copy.js, net.js `travel`): a player who goes to one beams out of the island in its green
+// glyph stream (sleep-beam.js), its body kept for the beam after the room lets it go (`leave` with `reason: "travel"`),
+// and one coming back beams in (a `join` with `travel`); while away its Ooga's NPC is a ghost (`net.state.away`), as a
+// cloud speaker's is. A player in a hosted chat's voice carries no mark of it.
 // One pool per scene visit: `create` in enter, `dispose` in leave, before the crew's.
 (() => {
   "use strict";
@@ -38,6 +42,8 @@
   // A remote strike's arm swing, raised then brought down, in seconds; and the scratch the gun hold works in.
   const SWING_TIME = 0.35;
   const MAX = 32;
+  // A traveller's beam out of the island or back in, and how many may run at once.
+  const BEAM_S = 0.6, BEAMS = 8;
   const EASE = 10;
   const SNAP = 8;
   const WALK_SPEED = 0.35;
@@ -54,6 +60,22 @@
   // With health the tooltip grows a second grid row: the row gap, then the 4-pixel bar with -2 and +1 margins.
   const BAR_W = 72, BAR_H = 4, BAR_ROW = DOT_GAP - 2, HEALTH_ROW = DOT_GAP + BAR_H - 2 + 1, ICON_GAP = 4;
   const NAME_BOX = Math.round(NAME_PAD_Y * 2 + NAME_LINE), NAME_BOX_HEALTH = Math.round(NAME_PAD_Y * 2 + NAME_LINE + HEALTH_ROW);
+  // Where a plate's top stands among those already drawn (`placed`, `n` boxes of left, top, right, bottom): over any it
+  // would overlap, a plate's height and a little more at a time; with no room left over it at the view's top, under it
+  // instead; and never past the view's top or foot, so every plate stays on screen. Allocates nothing.
+  const stack = (placed, n, left, top, boxW, boxH, viewH) => {
+    for (let again = true, tries = 0, down = false; again && tries < 8; tries++) {
+      again = false;
+      for (let i = 0; i < n; i++) {
+        const o = i * 4;
+        if (!(left < placed[o + 2] && left + boxW > placed[o] && top < placed[o + 3] && top + boxH > placed[o + 1])) continue;
+        if (!down && placed[o + 1] - boxH - 2 < EDGE) down = true;
+        top = Math.round(down ? placed[o + 3] + 2 : placed[o + 1] - boxH - 2);
+        again = true;
+      }
+    }
+    return Math.max(EDGE, Math.min(Math.max(EDGE, viewH - boxH - EDGE), top));
+  };
   // The font, and where its baseline falls in the name's line as the tooltip's CSS lays it out: read once.
   let nameFont = "", nameBaseline = 0;
   const NAME_STROKE = "rgba(20, 14, 8, 0.85)", NAME_FILL = "#f3efe4", BAR_TRACK = "rgba(0, 0, 0, 0.55)", ONLINE = "#22c55e", CLOUD_DOT = "#b18aff";
@@ -82,8 +104,8 @@
   const SPEAKER = [0, 3, 2, 3, 2, 2, 1, 5, 3, 1, 1, 7];
   const WAVES = [5, 3, 1, 3, 7, 2, 1, 5];
   const CROSS = [5, 3, 1, 1, 7, 3, 1, 1, 6, 4, 1, 1, 5, 5, 1, 1, 7, 5, 1, 1];
-  const runs = (ctx, cells, x, y) => {
-    for (let i = 0; i < cells.length; i += 4) ctx.fillRect(x + cells[i], y + cells[i + 1], cells[i + 2], cells[i + 3]);
+  const runs = (ctx, cells, x, y, k = 1) => {
+    for (let i = 0; i < cells.length; i += 4) ctx.fillRect(x + cells[i] * k, y + cells[i + 1] * k, cells[i + 2] * k, cells[i + 3] * k);
   };
 
   // The zones the hub itself reports, which share its coordinates: the main world (voice-blend.js), and the cave
@@ -106,7 +128,52 @@
     const pets = crew?.pets || BL.crew.createPets({ fx }, root);
     // The chat subscription, taken on the first update and again after a kept hub's suspend disposed it; the
     // shot and strike subscriptions the same way.
-    let unheard = null, unshot = null, unswung = null, unreacted = null, unaudience = null;
+    let unheard = null, unshot = null, unswung = null, unreacted = null, unaudience = null, unpresence = null;
+    // Travellers (`travel`): the beams, made the first time one is wanted; ids of players back whose bodies have yet to
+    // be built; and the NPCs this pool keeps ghosted for Oogas away in a copy, by name.
+    let beams = null;
+    const beamSlots = new Array(BEAMS).fill(null), arriving = new Set(), awayGhosts = new Map();
+    const beamShow = (entry, progress, incoming) => {
+      if (!BL.sleepBeam) return;
+      if (entry.beamSlot < 0) {
+        const slot = beamSlots.indexOf(null);
+        if (slot < 0) return;
+        beams ||= BL.sleepBeam.create({ root, capacity: BEAMS });
+        beamSlots[slot] = entry; entry.beamSlot = slot;
+      }
+      beams.show(entry.beamSlot, entry.x, entry.y, entry.z, entry.cave.root.rotation.y, progress, incoming, entry.cave.root);
+    };
+    const beamEnd = (entry) => {
+      if (entry.beamSlot < 0) return;
+      beams.hide(entry.beamSlot);
+      beamSlots[entry.beamSlot] = null; entry.beamSlot = -1;
+    };
+    const presence = (rec, joined, travelled) => {
+      if (!travelled) return;
+      if (joined) { arriving.add(rec.id); return; }
+      const entry = bodies.get(rec.id);
+      if (entry && !entry.cloud && entry.cave.root.visible) entry.beamOut = BEAM_S;
+    };
+    // Every Ooga the island says is away in a copy keeps its NPC a ghost, as a cloud speaker's does.
+    const syncAway = () => {
+      const away = net.state && net.state.away;
+      if (!ghost || !crew || !away && !awayGhosts.size) return;
+      for (const [name, cave] of awayGhosts) {
+        let still = false;
+        if (away) for (const character of away.values()) if (canonical(character) === name) { still = true; break; }
+        if (still) continue;
+        awayGhosts.delete(name);
+        let held = false;
+        for (const entry of bodies.values()) if (entry.ghosted === cave) { held = true; break; }
+        if (!held) ghost(cave, false);
+      }
+      if (away) for (const character of away.values()) {
+        const name = canonical(character), cave = crew.cavemen.get(name);
+        if (!cave || cave === crew.player || cave.localBody) continue;
+        if (!cave.ghostTrack) ghost(cave, true);
+        awayGhosts.set(name, cave);
+      }
+    };
     // Where the scene seats a cloud speaker this frame (`cloudSeat`'s out), and the entry for an id, by a walk of the
     // room's short list (32 at most) rather than a map kept beside it.
     const CLOUD_AT = { x: 0, y: 0, z: 0, yaw: 0 };
@@ -174,6 +241,7 @@
       if (hide) hide(entry.name, false);
       // Another body here still owns this Ooga (a cloud and a driven body at once): it stays a ghost for that one.
       if (entry.ghosted) for (const other of bodies.values()) if (other !== entry && other.ghosted === entry.ghosted) { entry.ghosted = null; return; }
+      if (entry.ghosted && awayGhosts.get(entry.name) === entry.ghosted) { entry.ghosted = null; return; }
       if (entry.ghosted) {
         // Solid again where its track has it; nothing else about it changed.
         const ghosted = entry.ghosted;
@@ -213,7 +281,7 @@
       addChild(root, cave.root);
       const motion = gorilla ? { walkPhase: NaN, walkGait: "knuckle", climb: 0, climbStride: 0, climbDirection: 0, climbSide: 0, swim: 0, lab: false, labRunIn: false, office: false, officeRise: 0 } : null;
       if (!gorilla) {
-        cave.baseY = cave.root.position.y; cave.jetFuel = 1; cave.hopV = 0;
+        cave.baseY = cave.root.position.y; cave.bodyHeight = height; cave.jetFuel = 1; cave.hopV = 0;
         if (cave.parts.dog) {
           // The shared terrain queries read the owner's standing envelope and passenger origin.
           cave.bodyHeight = height; cave.bodyRadius = BL.crew.bodyRadiusOf(cave); cave.hop = 0;
@@ -224,16 +292,18 @@
           cave.pet.node.sightHidden = true;
         }
       }
-      const entry = { id: rec.id, body: rec.body, name, gorilla, cave, motion, baseY: gorilla ? 0 : cave.root.position.y, height, top: NaN, dTop: 0,
+      // Its hip over its feet is the body's own (`cave.baseY`), which a worn height moves (character-wardrobe.js).
+      const entry = { id: rec.id, body: rec.body, name, gorilla, cave, motion, get baseY() { return gorilla ? 0 : cave.baseY; }, get height() { return gorilla ? 0 : cave.bodyHeight; }, top: NaN, dTop: 0,
         // The walk's step from the last sample, when it came and how fast it turned since the one before.
         gaitAt: NaN, gaitPhase: 0, gaitRate: 0, puff: 0, jetNode: null, jetFlame: null, swing: 0, shotAt: -Infinity, lastHeld: 0, lastMode: 0, lastMelee: 0, sampleAt: 0, sampleSwap: 0, sampleSwapIndex: 0, x: rec.x, y: rec.y, z: rec.z, yaw: rec.yaw, phase: 0, hidden: null, hiddenOverride: null, ghosted: null, label: "", labelW: 0,
-        react: "", reactT: 0, screenX: NaN, plateLeft: NaN, plateTop: NaN, plateW: 0, plateH: 0, plateTextX: NaN, plateBaseline: NaN, plateBarLeft: NaN, plateBarTop: NaN, pickOwner: { kind: "player", id: rec.id, cave, weaponType: "none" } };
+        react: "", reactT: 0, beamOut: 0, beamIn: 0, beamSlot: -1, screenX: NaN, plateLeft: NaN, plateTop: NaN, plateW: 0, plateH: 0, plateTextX: NaN, plateBaseline: NaN, plateBarLeft: NaN, plateBarTop: NaN, pickOwner: { kind: "player", id: rec.id, cave, weaponType: "none" } };
       bodies.set(rec.id, entry);
       hideLocal(entry);
       return entry;
     };
 
     const drop = (entry) => {
+      beamEnd(entry);
       if (entry.cave.restEquipment) entry.cave.restEquipment.release(entry.cave);
       // Its slots let go of its parts now, not at the next pick.
       idlePicks(0);
@@ -553,6 +623,7 @@
       if (!unreacted && net.subscribeReactions) unreacted = net.subscribeReactions(reacted);
       if (!unshot && net.subscribeShots) { unshot = net.subscribeShots(shotHeard); unswung = net.subscribeSwings(swingHeard); }
       if (cloudSeat && !unaudience && net.subscribeAudience) unaudience = net.subscribeAudience(cloudReacted);
+      if (!unpresence && net.subscribePresence) unpresence = net.subscribePresence(presence);
       for (const entry of bodies.values()) {
         if (entry.cloud) {
           const c = cloudOf(entry.id);
@@ -560,8 +631,17 @@
           continue;
         }
         const rec = net.remotes.get(entry.id);
+        // A traveller's body stays where it stood for its beam out, then goes.
+        if (!rec && entry.beamOut > 0) {
+          entry.beamOut -= dt;
+          if (entry.beamOut > 0) beamShow(entry, 1 - entry.beamOut / BEAM_S, false);
+          else drop(entry);
+          continue;
+        }
         if (!rec || rec.body !== entry.body) drop(entry);
       }
+      for (const id of arriving) if (!net.remotes.has(id)) arriving.delete(id);
+      syncAway();
       const k = 1 - Math.exp(-EASE * dt);
       let n = 0;
       for (const rec of net.remotes.values()) {
@@ -570,7 +650,9 @@
         if (!entry) {
           if (bodies.size >= MAX) continue;
           entry = build(rec);
+          if (arriving.delete(rec.id)) entry.beamIn = BEAM_S;
         }
+        if (!entry.gorilla) BL.equipment?.applyRemote(entry.cave, rec.id);
         // A copy this page drove when the body arrived (another tab's takeover) becomes its ghost once let go.
         if (ghost && crew && !entry.gorilla && !entry.ghosted) {
           const cave = crew.cavemen.get(entry.name);
@@ -614,6 +696,11 @@
             riding.x = p.x; riding.y = p.y; riding.z = p.z;
             pets.update(entry.cave, dt, !!entry.cave.hammockRest && (!rec.rest || rec.rest[1] === 2));
           }
+        }
+        if (entry.beamIn > 0) {
+          entry.beamIn -= dt;
+          if (entry.beamIn > 0 && entry.cave.root.visible) beamShow(entry, 1 - entry.beamIn / BEAM_S, true);
+          else beamEnd(entry);
         }
         // The top's move carries a player standing on it; a snap carries nobody.
         const height = entry.gorilla ? entry.cave.bodyHeight : entry.height, top = entry.y + height;
@@ -699,6 +786,10 @@
     // The head's top on screen and its middle across, from the corners of every visible mesh under the head as the
     // last frame drew them, through the scene's `project` (which may refuse a hidden point); false when none projects.
     let headMinX = Infinity, headMaxX = -Infinity, headTop = Infinity;
+    // The plates laid out this frame (left, top, right, bottom each), so a plate that would overlap one already drawn
+    // stands over it instead (seated speakers side by side on a bench), at most PLATES of them.
+    const PLATES = 64, placed = new Float64Array(PLATES * 4);
+    let placedN = 0;
     const projectHead = (node, project) => {
       if (!node.visible) return;
       if (node.geometry) {
@@ -774,7 +865,7 @@
         if (rig && rig.parts && rig.parts.head && rig.root.visible) projectHead(rig.parts.head, project);
         if (headTop !== Infinity) {
           const x = Math.round((headMinX + headMaxX) / 2), y = Math.round(headTop);
-          if (selfReactT > 0 || ownHand) drawReaction(ctx, x, y, selfReact, selfReactT, ownHand);
+          drawReaction(ctx, x, y, selfReact, selfReactT, ownHand);
         }
       }
       if (!nameFont) {
@@ -799,7 +890,8 @@
       ctx.textBaseline = "alphabetic";
       ctx.lineWidth = 3;
       ctx.lineJoin = "round";
-      const boxH = showHealth ? NAME_BOX_HEALTH : NAME_BOX, exact = fx && fx.projectRaw || project, viewW = window.innerWidth;
+      const boxH = showHealth ? NAME_BOX_HEALTH : NAME_BOX, exact = fx && fx.projectRaw || project, viewW = window.innerWidth, viewH = window.innerHeight;
+      placedN = 0;
       for (const entry of bodies.values()) {
         // Until laid out again, a body has no plate to report.
         entry.plateLeft = NaN;
@@ -811,6 +903,9 @@
         headMinX = Infinity; headMaxX = -Infinity; headTop = Infinity;
         anchorHead(entry.cave.parts.head, exact);
         if (headTop === Infinity) continue;
+        // A speaker seated on a cloud whose head is wholly out of the view has no plate: clamped to the edge, a bench's
+        // names would float there in a stack over nobody. (A walking player's plate keeps to the edge, as an NPC's does.)
+        if (entry.cloud && (headMaxX < 0 || headMinX > viewW || headTop > viewH)) continue;
         // Over the box as over an NPC's name tooltip (hud.js speechSpace), and over a raised hand.
         entry.cave.speechLift = boxH + SPEECH_GAP + (rec.hand ? HAND_ROOM : 0);
         // Measured once a name: measureText allocates.
@@ -820,7 +915,12 @@
         const inner = Math.max(DOT_D + DOT_GAP + entry.labelW, showHealth ? BAR_W : 0), boxW = Math.round(NAME_PAD_X * 2 + inner);
         const mid = (headMinX + headMaxX) / 2;
         const left = Math.round(Math.max(EDGE, Math.min(viewW - boxW - EDGE, mid - boxW / 2)));
-        const top = Math.round(Math.max(EDGE, headTop - NAME_BOTTOM - boxH)), line = top + NAME_PAD_Y;
+        let top = Math.round(Math.max(EDGE, headTop - NAME_BOTTOM - boxH));
+        top = stack(placed, placedN, left, top, boxW, boxH, viewH);
+        if (placedN < PLATES) { const o = placedN++ * 4; placed[o] = left; placed[o + 1] = top; placed[o + 2] = left + boxW; placed[o + 3] = top + boxH; }
+        // Speech stands over the plate wherever it went.
+        entry.cave.speechLift += Math.max(0, Math.round(headTop - NAME_BOTTOM - boxH) - top);
+        const line = top + NAME_PAD_Y;
         const textX = left + NAME_PAD_X + DOT_D + DOT_GAP, lineMid = line + NAME_LINE / 2;
         entry.screenX = mid; entry.plateLeft = left; entry.plateTop = top; entry.plateW = boxW; entry.plateH = boxH;
         entry.plateTextX = textX; entry.plateBaseline = line + nameBaseline;
@@ -849,6 +949,8 @@
           ctx.fillStyle = rec.ko ? BAR_KO : BAR_FILL;
           ctx.fillRect(left, top, Math.round(BAR_W * Math.max(0, Math.min(100, rec.hp)) / 100), BAR_H);
         }
+        // A player in a hosted chat's voice (net.js `call`) has their island voice paused: no mark.
+        if (!entry.cloud && rec.call && !(net.state && net.state.copy)) continue;
         // A cloud speaker is always in voice; the room says only whether their microphone is muted.
         if (!entry.cloud && !rec.voice) continue;
         const muted = entry.cloud ? rec.mic === "muted" : rec.muted;
@@ -891,9 +993,10 @@
         if (entry.gorilla) entry.cave.liveGeometry(set);
         else set.add(entry.cave.headOpen).add(entry.cave.headClosed);
       }
+      if (beams) beams.liveGeometry(set);
     };
 
-    const stats = () => ({ remotePlayers: actorList.length, reservedPlayers: bodies.size });
+    const stats = () => ({ remotePlayers: actorList.length, reservedPlayers: bodies.size, beaming: beamSlots.filter(Boolean).length, awayGhosts: awayGhosts.size });
 
     const dispose = () => {
       if (activePool === pool) activePool = null;
@@ -901,10 +1004,14 @@
       if (unshot) { unshot(); unswung(); }
       if (unreacted) unreacted();
       if (unaudience) unaudience();
-      unheard = unshot = unswung = unreacted = unaudience = null;
+      if (unpresence) unpresence();
+      unheard = unshot = unswung = unreacted = unaudience = unpresence = null;
       selfReact = ""; selfReactT = 0;
       if (lifted) { lifted.speechLift = 0; lifted = null; }
       for (const entry of [...bodies.values()]) drop(entry);
+      for (const cave of awayGhosts.values()) if (ghost) ghost(cave, false);
+      awayGhosts.clear(); arriving.clear();
+      if (beams) { beams.dispose(); beams = null; }
       actorList.length = 0;
     };
 
@@ -947,5 +1054,5 @@
 
   const nameplate = (id) => activePool ? activePool.nameplate(id) : null;
   const body = (id) => activePool ? activePool.body(id) : null;
-  BL.remotePlayers = { create, nameplate, body, joystick, onIsland, sameZone, MAX, BODY_HEIGHT };
+  BL.remotePlayers = { create, nameplate, body, joystick, onIsland, sameZone, stack, MAX, BODY_HEIGHT };
 })();

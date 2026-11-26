@@ -4,9 +4,9 @@ GitHub Actions keeps three PRs open against `rock`:
 
 | PR | Changes | Merge |
 |---|---|---|
-| Daily character updates | Bounded literal character data in the documented wrapper | First successful run at/after the following midnight UTC |
+| [Batch] Daily character updates | Bounded literal character data in the documented wrapper | First successful run at/after the following midnight UTC |
 | [Batch] Character updates · maintainer review required | Custom code that passes the preliminary screen and ownership checks | w-s-bitcoin or 2140data approves the current head, then an authorized human merges |
-| Character display names · maintainer review required | Operator-submitted display names matching the existing GitHub owner; all other bytes unchanged | Same exact-head approval and manual merge as custom code |
+| [Batch] Character display names · maintainer review required | Operator-submitted display names matching the existing GitHub owner; all other bytes unchanged | Same exact-head approval and manual merge as custom code |
 
 The automation never merges the manual or rename lanes. A queued update invalidates old
 approval; operator requests for changes block every lane. After a PR
@@ -18,11 +18,12 @@ submission to a reused daily placeholder starts its UTC day.
 
 ## Intake and ownership
 
-Open human- and AI-authored source PRs as **drafts**, and keep them draft while
-implementation is in progress. Mark them ready only after the work and authorized
-local checks are finished and the description records validation and remaining
-acceptance work. Return to draft for substantial additional development; small
-review fixes can stay ready. Batch related fixes before pushing. This applies to
+Open human- and AI-authored source PRs as **drafts** once the work has its first
+commit, and keep them draft while implementation is in progress, committing and
+pushing at each working checkpoint. Mark them ready only after the work and
+authorized local checks are finished and the description records validation and
+remaining acceptance work. Return to draft for substantial additional development;
+small review fixes can stay ready. Once ready, batch related fixes before pushing. This applies to
 source submissions, not the automation-managed bundle placeholders above, whose
 review and merge gates follow their lane policy. Draft status does not disable
 all CI; it keeps unfinished submissions out of character intake and review.
@@ -283,7 +284,8 @@ head must be a verified commit by that App.
 App merges trigger the existing post-merge workflows normally. The retained
 Actions-token fallback explicitly dispatches Pages after a bot merge and records
 a recovery marker; it cannot merge under the production branch restrictions.
-Cloudflare deployment stays manual.
+An App merge is a push to `rock`, so it deploys Cloudflare staging as any merge
+does. Production deployment stays manual.
 
 ## Operators and repository configuration
 

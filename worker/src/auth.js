@@ -6,7 +6,8 @@ import { cookieNames, isSecureOrigin, parseCookies, serializeCookie } from "./co
 import { randomToken, sameString } from "./crypto.js";
 import { createSession, deleteAllSessions, deleteSession, SESSION_SECONDS, upsertPlayerFromGitHub } from "./db.js";
 import { allowed, clientIp, fromSite, getSessionForRemoval, redirect, safeNext, text } from "./http.js";
-import { contributorFor } from "./contributor-access.js";
+import { revokeChats } from "./chat-revoke.js";
+import { contributorDecision, contributorForEnv } from "./contributor-access.js";
 import { oogatron } from "./contributor-policy.js";
 
 const STATE_SECONDS = 600;
@@ -80,7 +81,9 @@ const callback = async (request, env, url) => {
   if (!Number.isSafeInteger(profile.id) || typeof profile.login !== "string" || profile.type !== "User") {
     return text("GitHub sent an unexpected profile.", 502, { "set-cookie": clearState });
   }
-  if (!(await contributorFor(profile.login, profile.id, oogatron(env)))) {
+  const decision = await contributorDecision(contributorForEnv(env), profile.login, profile.id, oogatron(env));
+  if (!decision.character && !decision.fresh) return text("Character sign-in is temporarily unavailable. Try again shortly.", 503, { "set-cookie": clearState, "retry-after": "60" });
+  if (!decision.character) {
     const destination = new URL(next, env.SITE_ORIGIN);
     destination.searchParams.set("signin", "contributor-required");
     return redirect(destination.pathname + destination.search + destination.hash, [clearState]);
@@ -103,7 +106,11 @@ const logout = async (request, env, url) => {
   if (!fromSite(request, env.SITE_ORIGIN)) return text("Forbidden", 403);
   const found = await getSessionForRemoval(request, env);
   if (found) {
-    if (url.searchParams.get("all") === "1") await deleteAllSessions(env.DB, found.player.id);
+    if (url.searchParams.get("all") === "1") {
+      await deleteAllSessions(env.DB, found.player.id);
+      // Signed out everywhere: the account's hosted chat sockets from the island close too (docs/ooga-chat-hosts.md).
+      await revokeChats(env, { id: `ob_${found.player.id}` }, "logout-all").catch(() => 0);
+    }
     else await deleteSession(env.DB, found.token);
   }
   const clear = serializeCookie(cookieNames(env.SITE_ORIGIN).session, "", { maxAge: 0, secure: isSecureOrigin(env.SITE_ORIGIN) });

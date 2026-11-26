@@ -47,8 +47,8 @@ Click, shoot or club the restless ghost to open the ghost-hunt lobby. Its menu f
 - **Switching views with actors:** switching directly between controlled actors keeps carry/combat and the view type.
 - **Escape:** one step per press: close active UI, end a look, free captured mouse look, then leave an interior. Steps that do not apply are skipped. Escape never lets go of your Ooga or gorilla.
 - **Switch your pair:** while signed in on the island, **T** switches between your own Ooga and gorilla, smoothly moving the camera between them at their current positions. Pressing T again during the move continues from the current view. **G** switches Ooga weapons; during games it also holds a gorilla's grab. Companion switching is available in the hub and its connected islands/caves; separate interior scenes and games have their own actors.
-- **Weapons (HUB and games):** selected Oogas, including your own after sign-in, keep their rifle visible on their back while using melee, in both carry and combat mode. **G** switches, **1** club, **2** rifle. **Left mouse** fires or swings (hold to charge); the rifle button in the banner fires as it is pressed, and held it fires full auto, in carry mode along the way the Ooga faces. **F** strikes with the rifle in combat mode, **R** swaps magazines, **Space** at the pile reloads. HUB swings and shots do no damage to characters or the mirror. DSB Land, the ₿IFRÖST chamber, the Lightning Factory and its Jet Hangar, and Ooga Arcade's hall have no weapons or weapon buttons; yours come back when you leave.
-- **Mirror:** the glass is unbreakable; hits and shots make ripples. Its glyph effect and lever are retired for now. Moving the camera behind it shows a pitch-black room.
+- **Weapons (HUB and games):** selected Oogas, including your own after sign-in, keep their rifle visible on their back while using melee, in both carry and combat mode. **G** switches, **1** club, **2** rifle. **Left mouse** fires or swings (hold to charge); the rifle button in the banner fires as it is pressed, and held it fires full auto, in carry mode along the way the Ooga faces. **F** strikes with the rifle in combat mode, **R** swaps magazines, **Space** at the pile reloads. HUB swings and shots do no damage to characters or the mirror. DSB Land, the ₿IFRÖST chamber, the Lightning Factory and its Jet Hangar, Ooga Arcade's hall and the Observatory have no weapons or weapon buttons; yours come back when you leave.
+- **Mirror:** walk through the unbreakable glass into the Observatory, a black-walled room of live camera screens. Walk through the return mirror to reach the island. Move + Space jumps onto the central chair; Space nearby or on its cushion sits down, looking around or Q/E swivels it, and movement or Space stands up. Inside, weapons and jetpack are put away. While seated you hold a pen in your default fist, with an animated pen button and distinct down/up click sounds. On desktop, left-click a screen to enhance it across a 7×7 grid; click it again to restore the smaller feeds, or click another screen to move the enhancement. Right-click a screen to switch between area feeds and your face, clearing any enhancement. On touch, tap the view to switch between those views. Automatic switches happen only when you are not seated. Hits and shots still ripple the outside glass.
 - **Reset:** **Right Shift + R** resets saved progress. **Left Shift + R** keeps running while swapping magazines.
 - **Jetpack:** **J** puts it on; hold **Space** to climb. After a throw, steer back toward the island to brake and reverse the launch momentum while fuel remains.
 - **Controllers:** Xbox, PlayStation, Switch, Stadia and most Bluetooth pads. Press any button once and the game names it ("DualSense ready"); the browser shows a pad to the page only after a button is pressed. With more than one connected, the one you last pressed a button on plays.
@@ -65,7 +65,7 @@ The HUB banner's text and buttons shrink smoothly as the window narrows. Visible
 
 Roster colours show activity across every OogaBoogaX repo: yellow worked in the last hour, orange in the last day, gray asleep. The panel follows the minute-by-minute contribution feed in every scene, including the Sphere; activity ages keep updating while you stay there. Working Oogas load bananas at the pile and shoot them into their project's cave, where their gorilla companions build. HQ's ramps lead down to a basement of beds.
 
-Around the rim: **EntropyLab** (11 o'clock), **B.C.A.** (10), Banana Certified Accounting, where suited gorillas count bananas on abacuses, the **Lightning Factory** (2), **Ooga Arcade** (3), where a cabinet opens each game, the **Mempool island** (4) and the **Timechain Sphere** (southwest). Every game opens on a title card; **Enter** starts, **Escape** leaves.
+Around the rim: **EntropyLab** (11 o'clock), **B.C.A.** (10), Banana Certified Accounting, where suited gorillas count bananas on abacuses, the **Lightning Factory** (2), **Ooga Arcade** (3), where a cabinet opens each game and the back door opens Ooga Raid, the **Mempool island** (4) and the **Timechain Sphere** (southwest). Every game opens on a title card; **Enter** starts, **Escape** leaves.
 
 ## Playing together
 
@@ -106,12 +106,16 @@ Signed in, a room is shared with everyone who picks the same number (you see and
 
 Playing is free everywhere on the island; the only payments are ones you choose to make, a donation to feed the Oogas or a song request on DSB Land's radio. **Ooga Arcade** (3 o'clock) has a cabinet for each of Cloud Hopper, Ooga Drop, Ooga Orbit and Ooga Mine, carnival machines (Thro-ball, Hoop Shot, Coconut Toss, the Claw Machine, Air Hockey, Pool, Darts, Pinball and the Beast Ride) and eight retro cabinets on the mezzanine. Its games pay out tickets, which you spend at the prize counter or on the jackpot wheel.
 
-- **The Ember Den:** walk through its window in ₿IFRÖST, beside DSB Land's, straight into a room of ten poker tables, nine seats each, suited gorilla dealers and five cave themes. Local practice plus an experimental encrypted-deck multiplayer service (`npm run poker:serve`), private dealing and downloadable hand verification. Free play chips, no payments or rake. See [status](docs/banana-poker.md) and [protocol and service instructions](docs/poker-protocol.md).
+- **The Ember Den:** walk through its window in ₿IFRÖST, beside DSB Land's, straight into a room of ten poker tables, nine seats each, suited gorilla dealers and a crowd in evening dress, computer opponents at every table and a lounge playlist (credits in [CREDITS.md](CREDITS.md)). Local practice plus an experimental encrypted-deck multiplayer service (`npm run poker:serve`), private dealing and downloadable hand verification. Free play chips, no payments or rake. See [status](docs/banana-poker.md) and [protocol and service instructions](docs/poker-protocol.md).
 - **Cloud Hopper:** the front-left cabinet launches the Ooga onto a cloud above the arcade, then rides up to one of four courses. Race down to the banana pile; exiting returns to the arcade cabinet.
 - **Ooga Rally:** temporarily out of order. Its open cabinet stands left of Invaders across the mezzanine fire bowl, with a Clanker repairing it; game code and saved scores are retained. When available: three laps on one of three tracks against fourteen rivals drawn from the roster, fresh each time you come back to the garage. **W** go, **S** brake, **A D** steer, hold **Space** to drift and release to boost, **E** throws your item. Win gold in the Cup to open Mirror.
 - **Ooga Drop:** jump from the plane, fly through eight hoops (**W S** pitch, **A D** roll, **Q E** turn), **Space** pulls the chute, land on the pile.
 - **Ooga Orbit:** build a rocket, launch, reach the Sky Top at 500 up, spacewalk to measure the space rock (**V**), then fall home shield first and chute onto the pad.
 - **Ooga Mine:** a mining tycoon about margin. Place gear, watch power, heat and the halving, put out fires, and mine 21 coin within the hour. **W A S D** walk, **Space** works, **V** looks round, **P** pauses; the run saves as you go.
+- **Ooga Raid:** through Ooga Arcade's back door, a side-on run and gun as your own Ooga against the Fiat Legion: eight stages with a boss each (the Jungle Shore, The Counting House, The Hashrate Tower, The Treasury Vaults, The Lightning Factory Floor, Mempool Lake, Bifrost Pass and The Reserve), then round again, harder. One hit and you are down: three lives, three continues, more lives from 20,000 points. **A D** run, **W S** aim (**S** on the ground lies prone, wading it ducks under), **Space** jumps (**S** with **Space** drops off a ledge), **J** or a click fires; alone, the arrow keys move too. In the bank rooms, hold **W** at the open bars to walk on. **1** or **2** on the title card picks the players; player 2 runs and aims with the arrows, **,** jumps and **.** fires. **P** pauses, **Escape** opens the pause card, **Enter** continues at game over, **M** mutes.
+  - **Gamepads** (standard mapping): the stick or d-pad runs and aims, **A** jumps, **B** or **X** fires, **Start** pauses. Alone, every pad plays player 1; with two, the first pad is player 1 and the second player 2 (a lone pad is player 2, and player 1 keeps the keys).
+  - **Touch:** the stick runs and aims, **Jump!** jumps and a held **Fire** fires; **Pause** is in the header. Player 2 needs a keyboard or a pad.
+  - Your best score, the furthest stage and a finished loop are kept, and a run pays arcade tickets. On the signed-in site only signed-in players raid.
 - **The Agent:** double-click it to play; **Left Shift** gallops, **Space** jumps, and a second press while airborne adds a double jump. Each jump is 50% higher than an Ooga's. **C** beats its chest. **Right Shift + A** summons or releases it in scenes with an Agent.
 
 ## Weather
@@ -120,7 +124,7 @@ The mempool is the Mempool island: transactions arriving make its weather (six s
 
 ## Debug
 
-Each game and cave has an address to share, with its own preview card: `/oogarally`, `/oogadrop`, `/oogaorbit`, `/oogamine`, `/mempool`, `/dsb`, `/entropylab`, `/bca`, `/lightning` and `/sphere`. `/donate` opens the hub with its donation window. They work on the site and under `npm run serve`, and as `oogaboogaland.html#/oogarally` when the file is opened from disk; routes live in `src/js/routes.js`, and `npm run cards` recaptures the cards. `?scene=lab`, `race`, `drop`, `orbit`, `mine` or `dsb` opens that scene; `?nosim=1` silences the simulator and every feed; `?canvas2d=1` forces the Canvas 2D fallback; `?debug=1` exposes `window.__ooga`. AGENTS.md lists every flag and fixture.
+Each game and cave has an address to share, with its own preview card: `/oogarally`, `/oogadrop`, `/oogaorbit`, `/oogamine`, `/oogaraid`, `/mempool`, `/dsb`, `/entropylab`, `/bca`, `/lightning` and `/sphere`. `/donate` opens the hub with its donation window. They work on the site and under `npm run serve`, and as `oogaboogaland.html#/oogarally` when the file is opened from disk; routes live in `src/js/routes.js`, and `npm run cards` recaptures the cards. `?scene=lab`, `race`, `drop`, `orbit`, `mine`, `raid` or `dsb` opens that scene; `?nosim=1` silences the simulator and every feed; `?canvas2d=1` forces the Canvas 2D fallback; `?debug=1` exposes `window.__ooga`. AGENTS.md lists every flag and fixture.
 
 With `debug=1&totemglow=1`, keep all Merge Rock totems' animated glow patterns at full strength, including continuous pulses on the rings between heads and soft pulses across their painted details. This also works with `nosim=1`. Add `time=2200` to see them at night. The flag leaves repository timestamps and celebrations unchanged.
 
@@ -168,7 +172,9 @@ npm run build
 
 Writes `oogaboogaland.html`, one self-contained page with the content policy pinned to its hashes. CI commits it back after each merge to `rock`. The old GitHub Pages address, https://oogaboogax.github.io/oogaboogaland/, now redirects to https://oogabooga.land/.
 
-Two Cloudflare Workers serve the same site with GitHub sign-in, the shared island and voice: https://oogaboogaland-staging.wickedsmartbitcoin.workers.dev and https://oogabooga.land (production) both deploy by hand through GitHub Actions; `docs/cloudflare-setup.md` covers the setup and local development with `wrangler dev`, and `docs/auth-and-presence.md` the sign-in flow.
+For a smaller offline download, `npm run build:offline` also writes `untracked/offline/oogaboogaland-core.html` and `untracked/offline/lounge.roompack`. The core runs on its own. To visit the lounge behind the casino bookcase, choose the matching pack at the door once per session. The regular `oogaboogaland.html` includes the same artwork and needs no pack.
+
+Two Cloudflare Workers serve the same site with GitHub sign-in, the shared island and voice: https://oogaboogaland-staging.wickedsmartbitcoin.workers.dev and https://oogabooga.land (production) deploy through GitHub Actions, staging on every merge to `rock` and production by hand; `docs/cloudflare-setup.md` covers the setup and local development with `wrangler dev`, and `docs/auth-and-presence.md` the sign-in flow.
 
 ### Deploying to Cloudflare
 
@@ -176,7 +182,7 @@ Deploy only through GitHub Actions, and keep Cloudflare's Git connection (Worker
 
 | Environment | URL | Deploys |
 |---|---|---|
-| Staging | https://oogaboogaland-staging.wickedsmartbitcoin.workers.dev | by hand: **Actions → Deploy Cloudflare staging → Run workflow** on `rock` |
+| Staging | https://oogaboogaland-staging.wickedsmartbitcoin.workers.dev | on every merge to `rock`, then Ooga Chat's staging from the same commit; by hand on any branch: **Actions → Deploy Cloudflare staging → Run workflow**, until the next merge replaces it |
 | Production | https://oogabooga.land | by hand once staging looks right: **Actions → Deploy Cloudflare production → Run workflow** on `rock` |
 
 Each workflow builds the site (`npm run build:site`), runs the Worker's checks, applies D1 migrations and deploys with `wrangler.<env>.jsonc`. A deploy drops live connections for a moment, and players reconnect on their own.
@@ -228,6 +234,8 @@ DSB Land additionally contacts public Bitcoin feeds and radio/media services; pa
 
 Public domain under [The Ooga Booga License](LICENSE), a caveman-speak dedication with the meaning of The Unlicense.
 
+Third-party music and code keep their own licences: see [CREDITS.md](CREDITS.md).
+
 ## Contributing
 
 Start with [CONTRIBUTING.md](CONTRIBUTING.md): what the project is for, what needs no permission, what needs a maintainer's yes before you build it, and what is not wanted.
@@ -236,12 +244,14 @@ Then read [AGENTS.md](AGENTS.md): the module layout, the engine patterns, how to
 
 For a new project cave or independently hosted land, use the [connection contract](docs/cave-connections.md) and [submission template](docs/templates/cave-connection.md). The **Caves and lands** directory in ₿IFRÖST (also at `/bifrost`) lists the integrated caves and independent sites. External sites open in the same tab without transferring OBL account, inventory or voice data; browser Back returns to OBL.
 
-Open your PR as a **draft** and tell your AI assistant to keep it draft while the
-work is in progress. Finish the implementation and authorized local checks, then
-update the description with the result, validation and any remaining acceptance
-work before selecting **Ready for review**. That signals a finished change for
-maintainers to review. If substantial new work is needed, return the PR to draft;
-small review fixes can stay ready. Batch related fixes before pushing, and let
+Open your PR as a **draft** as soon as the work has its first commit, and tell your
+AI assistant to keep it draft while the work is in progress, committing and pushing
+at each working checkpoint so the branch keeps up with the work. Finish and polish
+the implementation and authorized local checks, then update the description with
+the result, validation and any remaining acceptance work before selecting **Ready
+for review**. That signals a finished change for maintainers to review. If
+substantial new work is needed, return the PR to draft; small review fixes can stay
+ready. Once it is ready, batch related fixes before pushing, and let
 required CI pass before merging. Drafts can still run some CI; draft status keeps
 unfinished work out of the review queue and character intake.
 
