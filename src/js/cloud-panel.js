@@ -256,7 +256,14 @@
   });
   logout.addEventListener("click", () => signOutFrom(logout, () => net.logout()));
   // In the list of hosted chats the hand is the island's, as in every other tab; on Main Island's audience, a speaker's.
+  // The bar is asked again whenever the panel's space really changes, whoever changed it: this file going in or out of
+  // hosted chats, or chat-hosts.js inside a chat (`browse`, Back to chats and back).
   BL.reactions.mount($("cloud-reactions"), { handAllowed: () => panel.dataset.space === "list" || model.canHand() });
+  const spaceWatch = new MutationObserver((records) => {
+    if (records.some((r) => r.oldValue !== (panel.getAttribute("data-space")))) BL.reactions.refresh();
+  });
+  spaceWatch.observe(panel, { attributes: true, attributeFilter: ["data-space"], attributeOldValue: true });
+  subs.push(() => spaceWatch.disconnect());
 
   // --- hosted chats ---
   const zoneChip = $("cloud-zone");
@@ -287,7 +294,6 @@
       else {
         hosts?.dispose(); hosts = null;
         delete panel.dataset.space;
-        BL.reactions.refresh();
         for (const el of [voiceButton, mute]) el.hidden = false;
         set(zoneChip, "textContent", A.ZONE_NAMES[ZONE]);
         account();
@@ -296,8 +302,8 @@
     }
     if (!on) return;
     const s = calls.state, room = s.room, v = s.voice, me = calls.identity();
-    const space = room ? "on" : "list";
-    if (panel.dataset.space !== space) { panel.dataset.space = space; BL.reactions.refresh(); }
+    // In a chat the space is chat-hosts.js's (`update`: "on", or "list" while browsing); out of one, the list.
+    if (!room && panel.dataset.space !== "list") panel.dataset.space = "list";
     if (room) BL.chatHosts.tagged(zoneChip, room.zone); else { set(zoneChip, "textContent", ""); zoneChip.title = ""; }
     hosts.update({ session: me ? { identity: me } : null, room, voice: v, device: { online: navigator.onLine !== false }, audience: s.audience });
     // The status line: the chat's socket, then what voice last said, then an empty chat.

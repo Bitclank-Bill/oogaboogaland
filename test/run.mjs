@@ -47359,7 +47359,7 @@ const cloudPanelChecks = async BL => {
   const resyncs = sent.filter(x => x.type === "audience-resync").length, staleRetry = pressRetry() === "audience-resync:main" && sent.filter(x => x.type === "audience-resync").length === resyncs + 1;
   hear({ t: "audience", v: 1, kind: "snapshot", epoch: 1, rev: 10, zone: "main", rows: [row("w1", "speaker"), row("tester", "listener", { self: true })] });
   // The room drops and comes back while the panel is hidden, with the same rows in the same order: shown again, they draw.
-  const show = on => { visible = on; for (const fn of observers) fn(); };
+  const show = on => { visible = on; for (const fn of observers) fn([]); };
   show(false);
   state.room = "connecting"; tick();
   const dropped = /Joining Main Island/.test($("cloud-status-text").textContent) && !$("cloud-retry").hidden;
