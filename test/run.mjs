@@ -37884,11 +37884,11 @@ scene("poker", { label: "salons", query: "character=portlandhodl", steps: [{ nam
   const walking=await b.evaluate(`document.activeElement===document.getElementById("scene") && document.querySelector('[data-poker="focus"]').hidden`);
   record("poker floor: Action jumps past tables, and a chair offers its own table only on confirmation",floor.aisle && floor.offered && floor.jumped && floor.passed && floor.confirmed && walking,JSON.stringify({floor,walking}));
 } }] });
-scene("poker", { label: "terrace booths", steps: [{ name: "Sit at every terrace fireplace", why: "playthrough: the terrace seats face working fireplaces and return their visitor to clear floor", run: async b => {
+scene("poker", { label: "terrace booths", steps: [{ name: "Sit at every terrace firepit", why: "playthrough: the terrace seats face circular firepits and return their visitor to clear floor", run: async b => {
   await b.evaluate(`document.querySelector('[data-intro="poker"] .game-intro-go').click()`);
   const booths=await b.evaluate(`(()=>{
     const D=BL.scenes.poker.debug,T=BL.pokerTerrace,terrace=D.poker.terrace,player=D.pilot.player,p=player.root.position;
-    return T.booths.map(({x,z,side,seats,hearth},index)=>{
+    return T.booths.map(({x,z,side,seats,pit},index)=>{
       const seat=seats[3], approach=z+side*.68;
       D.pilot.navigate({position:{x,y:0,z:approach},yaw:side>0?Math.PI:0,pitch:.15,dist:3});
       __ooga.advance(.16,.04);
@@ -37902,11 +37902,17 @@ scene("poker", { label: "terrace booths", steps: [{ name: "Sit at every terrace 
         window.dispatchEvent(new KeyboardEvent("keyup",{key:"a",code:"KeyA"}));
       }
       __ooga.advance(.1,.05);
-      const mantel=terrace.hearths[index];
+      const basin=terrace.firepits[index];
+      const rim=Array.from({length:8},(_,k)=>{
+        const a=k*Math.PI/4;
+        const clearAt=radius=>{
+          const px=pit.x+radius*Math.cos(a),pz=pit.z+radius*Math.sin(a);
+          return T.clear(px,pz,px,pz,player.bodyRadius);
+        };
+        return clearAt(pit.r+player.bodyRadius+.04) && !clearAt(pit.r+player.bodyRadius-.04);
+      }).every(Boolean);
       return {sat,stood:!player.camp.seat && Math.hypot(p.x-x,p.z-approach)<(index%2===0?.05:1.4) && player.hop===0,
-        front:mantel.position.x===x && mantel.position.z===hearth.z && (z-hearth.z)*side>1 &&
-          Math.cos(mantel.rotation.y)*side>.99 && mantel.children.length===3 &&
-          !T.clear(x,z,x,hearth.z,player.bodyRadius)};
+        front:basin.position.x===x && basin.position.z===pit.z && (z-pit.z)*side>1 && basin.children.length===3 && rim};
     });
   })()`);
   record("poker booths: sit facing the fire in all six enlarged booths and stand with Action or movement",

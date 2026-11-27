@@ -403,7 +403,7 @@
       floor:0,walkAt:{x:p.x,z:p.z}});
     if(seatedHere){
       pilot.controls.reset();
-      pilot.turnToward(seat.hearth.x,.55,seat.hearth.z);
+      pilot.turnToward(seat.pit.x,.67,seat.pit.z);
     }
     return seatedHere;
   };
