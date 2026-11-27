@@ -37208,10 +37208,11 @@ scene("poker", { query: "character=portlandhodl", steps: [{ name: "poker floor a
   const waited = await b.evaluate(`(() => {
     const B = __ooga, P = BL.scenes.poker.debug.poker, tables = P.session.tables;
     for (let i = 0; i < 10; i++) { P.select(i); B.advance(1 / 30, 1 / 30); const deal = document.querySelector('[data-poker-action="start"]'); if (!tables[i].playing && !deal.disabled) deal.click(); }
-    P.action("walk"); B.advance(1 / 30, 1 / 30);
+    document.querySelector('[data-poker="tools"]').click();
+    document.querySelector('[data-sheet="options"]').click();
     const all = tables.every(t => t.playing), at = P.selected;
     document.querySelector('[data-poker-action="quick"]').click();
-    const kept = { notice: document.querySelector('[data-poker="floor-notice"]').textContent, view: document.body.hasAttribute("data-poker-table-view"), seated: tables[at].snapshot().seats.some(p => p?.id === "local-player") };
+    const kept = { notice: document.querySelector('[data-poker="notice"]').textContent, view: document.body.hasAttribute("data-poker-table-view"), seated: tables[at].snapshot().seats.some(p => p?.id === "local-player") };
     let k = 0; for (; k < 300 && !tables[at].snapshot().seats.some(p => p?.id === "local-player"); k++) B.advance(0.2, 0.2);
     const sat = tables[at].snapshot().seats.some(p => p?.id === "local-player");
     if (sat) document.querySelector('[data-poker-action="stand"]').click();
@@ -37971,7 +37972,12 @@ const pokerEraHudStep = { name: "poker seated era HUDs", why: "playthrough: insp
     el.querySelector(".game-intro-go").click();
     for(let i=0;i<10;i++){
       if(i)click('[data-poker-action="walk"]');
-      click(".panel-edge");click('[data-watch="'+i+'"]');
+      const pilot=BL.scenes.poker.debug.pilot, M=BL.pokerModels, tableAt=M.TABLES[i];
+      const chair=M.SEATS.reduce((front,s)=>s.z>front.z?s:front);
+      pilot.navigate({position:{x:tableAt.x+chair.x,y:0,z:tableAt.z+chair.z+pilot.player.bodyRadius+.75},yaw:0,pitch:.18,dist:4});
+      __ooga.advance(.1,1/30);
+      if(el.querySelector('[data-poker="approach"]').hidden)notes.push(i+1);
+      click('[data-poker-action="open-nearby"]');
       await art.decode();
       const table=P.session.tables[i], before=table.version;
       tools("history");
@@ -38043,25 +38049,22 @@ const pokerEraHudStep = { name: "poker seated era HUDs", why: "playthrough: insp
   record("poker HUD: pressing the backdrop dismisses table tools and cancels departure while keeping the seat",toolsClosed && leaving && stayed,JSON.stringify({toolsClosed,leaving,stayed}));
 } };
 scene("poker", { opts: PHONE_SIZE, steps: [pokerEraHudStep] });
-scene("poker", { opts: PHONE_SIZE, steps: [phone("poker", { card: '[data-intro="poker"]', required: ["#joy-move", "#joy-look", "#poker .panel-edge"] }), { name: "poker phone actions", why: "rule: seated touch players can read private cards and access legal actions without horizontal overflow", run: async b => {
+scene("poker", { opts: PHONE_SIZE, steps: [phone("poker", { card: '[data-intro="poker"]', required: ["#joy-move", "#joy-look"] }), { name: "poker phone actions", why: "rule: seated touch players can read private cards and access legal actions without horizontal overflow", run: async b => {
   for (const [width,height] of [[844,390],[390,844]]) {
     await b.send("Emulation.setDeviceMetricsOverride",{width,height,deviceScaleFactor:1,mobile:true});
     await b.evaluate("new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))");
     const pad=await b.evaluate(`(() => {
-      const button=document.querySelector("#poker .panel-edge"), r=button.getBoundingClientRect(), j=document.querySelector("#joy-look").getBoundingClientRect();
-      return {compact:r.height===44 && r.width>=44 && r.width<110,clear:r.bottom<=j.top || r.left>=j.right || r.right<=j.left,
-        x:j.x+j.width/2,y:j.y+j.height/2,buttonX:r.x+r.width/2,buttonY:r.y+r.height/2};
+      const j=document.querySelector("#joy-look").getBoundingClientRect();
+      const clear=!document.querySelector('#poker-panel, [data-fold="poker-panel"], [data-poker="tables"]');
+      return {clear,x:j.x+j.width/2,y:j.y+j.height/2};
     })()`);
     await b.send("Input.dispatchTouchEvent",{type:"touchStart",touchPoints:[{x:pad.x,y:pad.y}]});
     await b.send("Input.dispatchTouchEvent",{type:"touchMove",touchPoints:[{x:pad.x+18,y:pad.y-8}]});
     const looking=await b.evaluate('document.getElementById("joy-look").classList.contains("live")');
     await b.send("Input.dispatchTouchEvent",{type:"touchEnd",touchPoints:[]});
-    await b.click(pad.buttonX,pad.buttonY);
-    const opened=await b.evaluate('document.querySelector("#poker .panel-edge").getAttribute("aria-expanded")==="true" && getComputedStyle(document.getElementById("poker-panel")).visibility==="visible"');
-    record("poker floor: compact Tables opens and leaves the look stick draggable at "+width+"×"+height,pad.compact && pad.clear && looking && opened,JSON.stringify({pad,looking,opened}));
-    if(width===844)await b.evaluate('document.querySelector("#poker-panel .panel-fold").click()');
+    record("poker floor: entry has no table list and the look stick is draggable at "+width+"×"+height,pad.clear && looking,JSON.stringify({pad,looking}));
   }
-  const r = await b.evaluate(`(() => { const P = BL.scenes.poker.debug.poker; document.querySelector('[data-poker-action="quick"]').click(); const panel = document.querySelector('[data-poker="focus"]'), r = panel.getBoundingClientRect(); return { fits: !panel.hidden && r.left >= 0 && r.right <= innerWidth && panel.scrollWidth <= panel.clientWidth + 1, seats: document.querySelectorAll(".poker-seats button").length, cards: document.querySelectorAll(".poker-hand .poker-card").length }; })()`);
+  const r = await b.evaluate(`(() => { const P = BL.scenes.poker.debug.poker; P.select(0); document.querySelector('[data-poker="tools"]').click(); document.querySelector('[data-sheet="options"]').click(); document.querySelector('[data-poker-action="quick"]').click(); const panel = document.querySelector('[data-poker="focus"]'), r = panel.getBoundingClientRect(); return { fits: !panel.hidden && r.left >= 0 && r.right <= innerWidth && panel.scrollWidth <= panel.clientWidth + 1, seats: document.querySelectorAll(".poker-seats button").length, cards: document.querySelectorAll(".poker-hand .poker-card").length }; })()`);
   record("poker phone: nine seat choices and two private cards fit the panel", r.fits && r.seats === 9 && r.cards === 2, JSON.stringify(r));
   // The room faked only as far as the scene reads it for the Emote button (`reactions`, `room`), restored after. Open,
   // the menu lies inside the screen and its first and last emotes are uncovered; Escape closes it and leaves the table

@@ -60,10 +60,10 @@ back to ₿IFRÖST, in front of that window.
 
 On the gaming floor, walk up to a chair to see its table number and name. Choose **Open table** (Y on a keyboard) to watch, then **Take a seat** when you want to play. **Keep walking** dismisses the offer until you approach again. Jump and Act let you move past tables.
 
-**Play a practice hand** takes a free seat, adds enough computer opponents for four
+In **Table tools → Options**, **Play a practice hand** takes a free seat, adds enough computer opponents for four
 players and deals. If every table is mid-hand, it keeps a seat at the table shown
-and sits you down when that hand ends. Or choose any of the ten lobby table cards,
-take a specific seat between hands, add up to three bots at a time, and deal when
+and sits you down when that hand ends. You can also pick a chair at any table,
+take that seat between hands, add up to three bots at a time, and deal when
 ready. Every table has nine player seats plus a suited gorilla dealer. Two funded
 seats suffice; there is no table owner or privileged host.
 
@@ -152,7 +152,7 @@ Card motion and the dealer's deal gesture respect the reduced-motion preference.
 
 WASD/sticks move the spectator; drag/look controls use the shared pilot. The
 central aisle and passages between table rows remain walkable. **Walk the floor**
-closes the playing view. Fold the lobby to see more of the room. All physical
+closes the playing view. All physical
 tabletop hole cards are identical backs; walking behind a seat reveals nothing.
 A spectator can watch the focused view, return to walking, and select another
 table. Taking a second seat requires leaving the first.
