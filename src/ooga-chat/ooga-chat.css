@@ -357,7 +357,6 @@ body {
    with no gap. */
 .oc .oc-panel { gap: 6px; padding: 6px 8px; }
 .oc .oc-panel > .panel-foot { gap: 6px 12px; }
-.oc .oc-panel > .panel-foot > .reactions { margin: 0; }
 .oc .oc-panel.oc-panel > :is(.hc-room-strip, .cloud-roster) { margin-right: -8px; margin-left: -8px; border-right-width: 0; border-left-width: 0; border-radius: 0; }
 .oc .oc-panel > .hc-room-strip { margin-bottom: -6px; }
 .oc .oc-panel > .hc-notice-host { margin-top: -6px; }

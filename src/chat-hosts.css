@@ -1,9 +1,10 @@
 /* Hosted chats' look (chat-hosts.js, docs/ooga-chat-hosts.md), Ooga Chat's and the island's alike: the list before a
-   chat is chosen (a panel's `data-space="list"`, which hides its roster), then the chat's bar, invite card, badges,
+   chat is chosen (a panel's `data-space="list"`, which hides its roster, and in Ooga Chat's app its emoji bar, which
+   has nowhere to send outside a chat; the island's sends over the visitor's Ooga, so it stays), then the chat's bar, invite card, badges,
    pop-ups and the Start a chat dialog. The island joins it after style.css; Ooga Chat stages it with its `hosts` chunk
    (scripts/ooga-chat.mjs). Under 400px the pop-ups are sheets at the foot of the screen with 44px controls. */
 .panel[data-space="list"] > :is(.cloud-status, .cloud-roster, .oc-volume, .hc-invite, .hc-room-strip),
-.panel[data-space="list"] > .panel-foot > .reactions,
+.oc-panel[data-space="list"] > .panel-foot > .reactions,
 .panel[data-space="list"] > .panel-title > .panel-chip,
 .hc-chats[hidden], .hc-room-bar[hidden], .hc-invite[hidden], .hc-pop[hidden] { display: none; }
 .hc-chats { display: grid; flex: 1 1 auto; align-content: start; gap: 10px; min-height: 0; overflow-y: auto; padding: 16px 18px; }

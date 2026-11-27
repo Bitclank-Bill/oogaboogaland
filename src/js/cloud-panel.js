@@ -255,7 +255,8 @@
     else if (!footerState.voice.disabled) voice.toggle();
   });
   logout.addEventListener("click", () => signOutFrom(logout, () => net.logout()));
-  BL.reactions.mount($("cloud-reactions"), { handAllowed: () => model.canHand() });
+  // In the list of hosted chats the hand is the island's, as in every other tab; on Main Island's audience, a speaker's.
+  BL.reactions.mount($("cloud-reactions"), { handAllowed: () => panel.dataset.space === "list" || model.canHand() });
 
   // --- hosted chats ---
   const zoneChip = $("cloud-zone");
@@ -286,6 +287,7 @@
       else {
         hosts?.dispose(); hosts = null;
         delete panel.dataset.space;
+        BL.reactions.refresh();
         for (const el of [voiceButton, mute]) el.hidden = false;
         set(zoneChip, "textContent", A.ZONE_NAMES[ZONE]);
         account();
@@ -294,7 +296,8 @@
     }
     if (!on) return;
     const s = calls.state, room = s.room, v = s.voice, me = calls.identity();
-    panel.dataset.space = room ? "on" : "list";
+    const space = room ? "on" : "list";
+    if (panel.dataset.space !== space) { panel.dataset.space = space; BL.reactions.refresh(); }
     if (room) BL.chatHosts.tagged(zoneChip, room.zone); else { set(zoneChip, "textContent", ""); zoneChip.title = ""; }
     hosts.update({ session: me ? { identity: me } : null, room, voice: v, device: { online: navigator.onLine !== false }, audience: s.audience });
     // The status line: the chat's socket, then what voice last said, then an empty chat.
@@ -422,7 +425,7 @@
   }));
   BL.sheet.watchViews(panel, () => { if (unread) { unread = 0; BL.sheet.setBadge("cloud", 0); } });
 
-  // --- a chat previewed from Online Oogas' In Ooga Chat (players.js) ---
+  // --- a chat previewed from Online Oogas' Ooga Chats (players.js) ---
   // `preview(id, from)`: the chat as the live list has it now (one no longer listed is said to have ended) in the chat's
   // preview (chat-hosts.js), whose Join as listener or Join as speaker opens it here (`openChat`) and shows the Ooga Chat
   // tab; the chat the visitor is in already only shows the tab. A visitor in another chat is asked first (`Change
