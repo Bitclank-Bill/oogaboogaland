@@ -558,7 +558,7 @@ uniform vec4 uLakeFlowV;
 uniform vec4 uLakeCharge;
 uniform vec2 uLakeChargeCenter;
 uniform vec4 uLakeOcclude;
-uniform float uLightBeam;
+uniform vec2 uLightBeam;
 uniform float uMatrixCave;
 uniform vec4 uMatrixCaves[8];
 uniform vec4 uMatrixCaveBounds[8];
@@ -1285,9 +1285,15 @@ void main() {
   float glassAlpha = uGlass < 1.0 ? clamp(uGlass + pow(1.0 - abs(dot(n, normalize(uEye - vWorld))), 2.0) * 0.55, 0.0, 1.0) : 1.0;
   if (lake) glassAlpha = lakeAlpha;
   // Dust scatters faint light without a glass rim; its intensity fades toward the far end.
-  if (uLightBeam > 0.0) {
-    float fade = clamp(1.0 - vLocal.x / uLightBeam, 0.0, 1.0);
+  if (uLightBeam.x > 0.0) {
+    float fade = clamp(1.0 - vLocal.x / uLightBeam.x, 0.0, 1.0);
     glassAlpha = uGlass * fade * fade;
+    if (uLightBeam.y > 0.0) {
+      // Through a round shaft the scattering path is longest on its axis and
+      // approaches zero at its silhouette. Both passes contribute half the depth.
+      float chord = abs(dot(n, normalize(viewTowardEye(vWorld))));
+      glassAlpha = 1.0 - exp(-3.0 * uGlass * fade * chord);
+    }
   }
   if (uGlassOpacity > 0.0) {
     vec3 view = normalize(viewTowardEye(vWorld));
@@ -3253,7 +3259,7 @@ void main() {
       }
       return changed || baked !== shadowBakedCount;
     };
-    const markMirrorVisible = () => {
+    const markMirrorVisible = (trimInstances) => {
       const captureRecords = cameraFeedSource?.captureRecords || activeRecords;
       for (let i = 0; i < captureRecords.length; i++) {
         const rec = captureRecords[i];
@@ -3261,6 +3267,13 @@ void main() {
         const sphere = rec.batch && rec.batch.cullSphere;
         let visible = count > 0 && rec.batch ? !sphere || sphereInFrustum(sphere[0], sphere[1], sphere[2], sphere[3] + CULL_MARGIN, MIRROR_FRUSTUM) : false;
         for (let k = 0; !rec.batch && !visible && k < count; k++) visible = slotInFrustum(rec.spheres, k * 4, MIRROR_FRUSTUM);
+        // The same conservative sphere test used for record rejection also bounds the last instance
+        // needed by a full-detail capture. Keep the original prefix and instance IDs for this pass.
+        let end = count;
+        if (trimInstances && visible && !rec.batch && !rec.geometry.meshRig && !rec.geometry.projective) {
+          while (end > 1 && !slotInFrustum(rec.spheres, (end - 1) * 4, MIRROR_FRUSTUM)) end--;
+        }
+        rec.mirrorCount = end;
         rec.mirrorVisible = visible;
       }
     };
@@ -4288,9 +4301,9 @@ uniform float uDiffuseFloor;`)
       drawParts("mesh", name, true, cull);
       glassPass = false;
       gl.uniform1f(mesh.u.uGlass, 1);
-      gl.uniform1f(mesh.u.uLightBeam, 0);
+      gl.uniform2f(mesh.u.uLightBeam, 0, 0);
       mesh.glass = 1;
-      mesh.lightBeam = 0;
+      mesh.lightBeam = mesh.roundBeam = 0;
       if (plain) gl.useProgram(programs.mesh.prog);
       gl.depthMask(true);
       gl.disable(gl.BLEND);
@@ -4356,7 +4369,7 @@ uniform float uDiffuseFloor;`)
           : g.sway || g.foliageVisibility === false || g.imageSurface && !(g.architectRoom && g.imageSurface.feed)))) continue;
         if (captureProfile) captureGeometry = g;
         const part = rec[kind], n = cameraFeedCapture ? rec.batch && rec.batch.drawInstanceCount !== undefined ? rec.batch.drawInstanceCount : rec.count
-          : rec.batch && rec.batch.drawInstanceCount !== undefined ? rec.drawCount : cull ? rec.drawCount : rec.viewCount;
+          : rec.batch && rec.batch.drawInstanceCount !== undefined ? rec.drawCount : cull ? rec.drawCount : excludeMirror ? rec.mirrorCount : rec.viewCount;
         if (!part || !n) continue;
         let first = 0, count = part.count;
         if (plainFilter) {
@@ -4403,8 +4416,10 @@ uniform float uDiffuseFloor;`)
             mesh.glass = g.glass;
           }
           const beam = g.lightBeam || 0;
-          if (beam !== mesh.lightBeam) {
-            gl.uniform1f(mesh.u.uLightBeam, beam);
+          const round = g.roundBeam ? 1 : 0;
+          if (beam !== mesh.lightBeam || round !== mesh.roundBeam) {
+            gl.uniform2f(mesh.u.uLightBeam, beam, round);
+            mesh.roundBeam = round;
             mesh.lightBeam = beam;
           }
         }
@@ -4625,7 +4640,7 @@ uniform float uDiffuseFloor;`)
       if (target !== mirror) ensureReflectorTarget(target);
       else if (!cube) ensureMirrorTarget();
       extractFrustum(mirrorViewProj, MIRROR_FRUSTUM);
-      markMirrorVisible();
+      markMirrorVisible(qualityName === "high" && target.record?.geometry.trimReflectionInstances && !cameraFeedCapture);
       // Every reflector shows in a reflection as its plain glass, but the one being captured.
       reflectorPass = target.record;
       const pg = programs;

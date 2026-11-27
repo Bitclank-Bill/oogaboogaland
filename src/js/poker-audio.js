@@ -21,8 +21,8 @@
 //
 // The lounge's playlist: four recordings by Kevin MacLeod (CC BY 4.0, CREDITS.md), each its own deferred group,
 // `lounge-track-<key>` (lounge-track-*.js; each key listed in deferred.js's `PRESENT` too, or its fetch throws), the one
-// exception here to synthesized sound. Lobby Time opens the visit, then the other three play shuffled; a new round never opens on
-// the track just heard (ghost-audio.js's `advance` and `shuffle`). At most one decoded track is ever held (a decoded
+// exception here to synthesized sound. Hosted descriptors point to same-origin streaming media. Lobby Time opens the visit, then the other three play shuffled; a new round never opens on
+// the track just heard (ghost-audio.js's `advance` and `shuffle`). The portable path holds at most one decoded track (a decoded
 // track is 68 to 158 MB), so there is no crossfade between two recordings: a track fades in over `XFADE`, fades out
 // over its own reverb tail (`tail` plus `TAIL_PAD`) to its last sample, and is released; only then is the next decoded,
 // and it fades in. The synthesized music above is the fallback and fills every gap: it plays from the first gesture
@@ -46,7 +46,7 @@
   // `WIN_HOLD` seconds after a hand is won, dipped over `WIN_EASE` and back over `SEAT_EASE`.
   const SEATED = 0.45, WON = 0.25, WIN_HOLD = 1.5, SEAT_EASE = 0.6, WIN_EASE = 0.15;
   // The bed: a bandpass at `BED_HZ`, its gain at `BED_LEVEL` swinging `BED_DEPTH` either way at `BED_WOBBLE` hertz.
-  const BED_HZ = 420, BED_Q = 0.7, BED_LEVEL = 0.5, BED_DEPTH = 0.15, BED_WOBBLE = 0.13;
+  const BED_HZ = 420, BED_Q = 0.7, BED_LEVEL = 0.1, BED_DEPTH = 0.03, BED_WOBBLE = 0.13;
   // The brush kit's own noise voices, on the music bus.
   const BRUSHES = 4;
   // The bed's level: `BED_FLOOR` plus `BED_NEAR` times how near the nearer bar wing or the nearest table is (half at
@@ -141,14 +141,15 @@
     // the tracks' own gains, built at init.
     const order = TRACKS.map((_, i) => i), failed = new Uint8Array(TRACKS.length), trims = [];
     let slot = 0, state = WAIT, fetching = -1, playing = -1, heard = -1, held = null, source = null, token = 0;
+    let media = null, nextMedia = null, mediaFetch = null;
     let fadeAt = 0, endAt = 0, prefetchAt = 0, prefetched = false;
     // `off`: a decode failed, so this browser cannot play the tracks' format and the playlist stops for the visit.
     const playlist = { loaded: [], decoding: null, playing: null, failed: [], fallback: true, held: 0, played: 0, off: false };
-    let doorGain, doorFilter, doorPan, lastDistance = -1, lastPan = -2;
+    let doorGain, doorFilter, doorPan, lastDistance = -1, lastPan = -2, bellPass = 1;
     const musicChannel = BL.sound.channel("music"), roomChannel = BL.sound.channel("room");
     const triangles = [], sines = [], noises = [], brushes = [], roomSines = [], bed = {};
     const motors = [];
-    let exhaust = null;
+    let exhaust = null, hearthWait = 0;
     let wingBuffer=null,flutter=null,nextFlutter=0;
     const stopFlutter=()=>{
       if(!flutter)return;
@@ -411,8 +412,8 @@
         (bass ? triangles : sines).push({ osc: osc(bass ? "triangle" : "sine", 220, f), filter: f, gain: g, pan, until: 0 });
       }
       for (let i = 0; i < ROOM_TONES; i++) {
-        const pan = panner(room), g = gain(0, pan), f = filter("lowpass", 4000, 0.7, g);
-        roomSines.push({ osc: osc("sine", 220, f), filter: f, gain: g, pan, until: 0 });
+        const pan = panner(room), gate = gain(1,pan), g = gain(0,gate), f = filter("lowpass", 4000, 0.7, g);
+        roomSines.push({ osc: osc("sine", 220, f), filter: f, gain: g, pan, gate, bell: false, until: 0 });
       }
       for (let i = 0; i < NOISES; i++) {
         const pan = panner(room), g = gain(0, pan), f = filter("bandpass", 1000, 1, g);
@@ -459,10 +460,16 @@
       failed[k] = 1;
       playlist.failed.push(TRACKS[k].key);
     };
+    const prebuffer = k => {
+      const url = bytesOf(k);
+      if (nextMedia || !url || !url.startsWith("/audio/")) return;
+      nextMedia = new Audio(); nextMedia.preload = "auto"; nextMedia.src = url;
+    };
     // A track's group has answered: its bytes are here, or the track has failed.
     const arrived = (k) => {
       if (!bytesOf(k)) fail(k);
       else if (!playlist.loaded.includes(TRACKS[k].key)) playlist.loaded.push(TRACKS[k].key);
+      if (state === PLAY && k === nextTrack()) prebuffer(k);
       want();
     };
     // Asks for a track's group once (same-origin, or present already: the portable page answers null at once). A
@@ -475,7 +482,76 @@
       loading.then(() => { if (fetching === k) fetching = -1; if (!disposed) arrived(k); },
         () => { if (fetching === k) fetching = -1; if (!disposed) { fail(k); want(); } });
     };
-    // With nothing held or decoding: the next track's bytes fetched, or decoded once the context is open.
+    // A full recording stays in the browser's media pipeline. The element uses the same trim, fade and ducking
+    // bus as the portable buffer. Its playback clock stops during buffering and its ended event advances the order.
+    const clearMedia = () => {
+      if (!media) return;
+      media.onended = media.onerror = media.onwaiting = media.onplaying = null;
+      media.pause(); media.removeAttribute("src"); media.load();
+      media = null;
+      source?.disconnect(); source = null;
+    };
+    const mixStream = (k, stalled) => {
+      if (!media || !Number.isFinite(media.duration)) return;
+      const now = ctx.currentTime, left = media.duration - media.currentTime;
+      const tail = TRACKS[k].tail + TAIL_PAD;
+      const level = stalled ? 0 : Math.min(1, media.currentTime / XFADE, Math.max(0,left / tail));
+      fade.gain.cancelScheduledValues(now); synth.gain.cancelScheduledValues(now);
+      fade.gain.setTargetAtTime(level, now, .04); synth.gain.setTargetAtTime(1-level, now, .04);
+      if (!stalled && left > 0) {
+        const rise = Math.max(0, XFADE - media.currentTime);
+        if (left > tail) {
+          fade.gain.linearRampToValueAtTime(1, now + rise + .05);
+          synth.gain.linearRampToValueAtTime(0, now + rise + .05);
+          fade.gain.setValueAtTime(1, now + left - tail); synth.gain.setValueAtTime(0, now + left - tail);
+        }
+        fade.gain.linearRampToValueAtTime(0, now + left); synth.gain.linearRampToValueAtTime(1, now + left);
+      }
+    };
+    const playStream = (k, url, mine) => {
+      const player = media = nextMedia || new Audio();
+      nextMedia = null;
+      const current = () => !disposed && mine === token && media === player;
+      const failedStream = () => {
+        if (!current()) return;
+        clearMedia(); playlist.decoding = playlist.playing = null; playlist.fallback = true;
+        fade.gain.cancelScheduledValues(ctx.currentTime); synth.gain.cancelScheduledValues(ctx.currentTime);
+        synth.gain.setTargetAtTime(1, ctx.currentTime, .05);
+        state = WAIT; playing = -1; fail(k); want();
+      };
+      try {
+        source = ctx.createMediaElementSource(player); source.connect(trims[k]);
+        player.onerror = failedStream;
+        player.onwaiting = () => { if (current()) mixStream(k,true); };
+        player.onplaying = () => {
+          if (!current()) return;
+          if (state === DECODE) {
+            playlist.decoding = null; playing = heard = k; playlist.playing = TRACKS[k].key;
+            state = PLAY; playlist.played++; playlist.fallback = false; prefetched = false; advance();
+          }
+          mixStream(k,false);
+        };
+        player.onended = () => { if (current()) release(); };
+        if (player.getAttribute("src") !== url) player.src = url;
+        player.play().catch(async error => {
+          if (!current()) return;
+          if (error.name !== "NotAllowedError") { failedStream(); return; }
+          // Some gesture policies allow the already-unlocked context but refuse a new media element.
+          // Recover through the same decoded-buffer path as the portable page on those devices.
+          player.onerror = player.onplaying = player.onwaiting = player.onended = null;
+          mediaFetch = new AbortController();
+          try {
+            const response = await fetch(url, { signal: mediaFetch.signal });
+            if (!response.ok) throw new Error("Recording unavailable");
+            const decoded = await ctx.decodeAudioData(await response.arrayBuffer());
+            if (!current()) return;
+            clearMedia(); held = decoded; playlist.held = 1; playlist.decoding = null; begin(k);
+          } catch { failedStream(); }
+          finally { if (mine === token) mediaFetch = null; }
+        });
+      } catch { failedStream(); }
+    };
+    // Hosted descriptors start a media stream. Portable recordings are decoded after the context opens.
     const want = () => {
       if (disposed || playlist.off || state !== WAIT) return;
       const k = nextTrack();
@@ -485,6 +561,7 @@
       state = DECODE;
       playlist.decoding = TRACKS[k].key;
       const mine = ++token;
+      if (bytesOf(k).startsWith("/audio/")) { playStream(k, bytesOf(k), mine); return; }
       // A decode that throws or rejects means this browser cannot play the format every track shares (no AAC): the
       // playlist stops quietly for the visit, fetching nothing more, and the synth plays on. One that lands after
       // `dispose`, or after another took its place, is dropped.
@@ -532,6 +609,7 @@
     };
     // The track has played out: its source and buffer let go, then the next is asked for.
     const release = () => {
+      clearMedia();
       if (source) {
         try { source.stop(); } catch { /* already ended */ }
         source.disconnect();
@@ -548,12 +626,12 @@
     const step = () => {
       if (state !== PLAY) return;
       const now = ctx.currentTime;
-      if (!prefetched && !playlist.off && now >= prefetchAt) {
+      if (!prefetched && !playlist.off && (media ? media.duration - media.currentTime <= PREFETCH : now >= prefetchAt)) {
         prefetched = true;
         const k = nextTrack();
-        if (k >= 0 && !bytesOf(k)) fetchTrack(k);
+        if (k >= 0) { if (!bytesOf(k)) fetchTrack(k); else prebuffer(k); }
       }
-      if (now >= endAt) release();
+      if (!media && now >= endAt) release();
     };
 
     // Only from a gesture the browser has already counted, so nothing warns in the console; a gesture also wakes a
@@ -647,6 +725,7 @@
     };
     // `count` taps `gap` apart on the free voice `v` from `now`, each up to `level` and away by `dur`, where AT says.
     const taps = (v, count, gap, level, dur, now, attack = 0.002) => {
+      if (v.bell) { v.gate.gain.setValueAtTime(1,now); v.bell=false; }
       const g = v.gain.gain, peak = Math.max(0.0002, level * AT.level);
       g.cancelScheduledValues(now);
       for (let i = 0; i < count; i++) {
@@ -705,8 +784,9 @@
       roomSines.forEach((v,i) => {
         v.osc.frequency.cancelScheduledValues(now);
         v.osc.frequency.setValueAtTime(i ? 1327 : 587.33,now);
-        v.filter.frequency.setValueAtTime(5100,now);
+        v.filter.frequency.setValueAtTime(520+4580*bellPass,now);
         taps(v,1,0,i ? 0.17 : 0.38,i ? 0.85 : 2.2,now,0.007);
+        v.bell=true; v.gate.gain.setValueAtTime(bellPass,now);
       });
       stats.blockChimes++;
     };
@@ -724,7 +804,7 @@
     };
     // The bed follows the nearest table or the nearer edge of the bar.
     let lastBedLevel = BED_FLOOR;
-    const bedLevel = () => {
+    const bedLevel = (chapel) => {
       let d2 = Infinity;
       for (let i = 0; i < wings.length; i++) {
         const w = wings[i], dx = Math.max(0, Math.abs(EAR.x - w.x) - w.hx), dz = Math.max(0, Math.abs(EAR.z - w.z) - w.hz);
@@ -734,29 +814,36 @@
         const dx = EAR.x - tables[i].x, dz = EAR.z - tables[i].z;
         d2 = Math.min(d2, dx * dx + dz * dz);
       }
-      const target = BED_FLOOR + BED_NEAR / (1 + d2 / (BED_REF * BED_REF));
+      const target = (1 - chapel) * (BED_FLOOR + BED_NEAR / (1 + d2 / (BED_REF * BED_REF)));
       if (target !== lastBedLevel) {
         bed.level.gain.setTargetAtTime(target, ctx.currentTime, BED_EASE / 3);
         lastBedLevel = target;
       }
     };
 
-    const update = (dt, ear, time = 0, pressureAge = Infinity) => {
+    const update = (dt, ear, time = 0, pressureAge = Infinity, chapel = 0, transmission = 1) => {
       EAR.x = ear.x; EAR.z = ear.z; EAR.fx = ear.fx; EAR.fz = ear.fz;
       activate();
+      if (transmission !== bellPass) {
+        bellPass=transmission;
+        if (ready) for (const v of roomSines) if (v.bell && v.until>ctx.currentTime) {
+          v.gate.gain.setTargetAtTime(bellPass,ctx.currentTime,.045);
+          v.filter.frequency.setTargetAtTime(520+4580*bellPass,ctx.currentTime,.045);
+        }
+      }
       if (!ready) return;
       sequence();
       step();
       if ((bedWait -= dt) <= 0) {
         bedWait = BED_EVERY;
-        bedLevel();
+        bedLevel(chapel);
         if (engineBank && !document.hidden) spatialEngines(time, pressureAge, ear);
         // Outdoors, both the recording and the synth reach the ear from the open bay.
         const dx = 24.42 - ear.x, dz = -ear.z, dist = Math.hypot(dx, dz);
         // Across the wider deck the recording continues to recede toward the doorway, including in either wing.
         const reach = Math.max(0, Math.min(1, -dx / 2)) * dist;
         const panMix = Math.min(1, reach / 7);
-        const outside = panMix + .4 * (1 - 1 / (1 + Math.max(0, reach - 8) / 12));
+        const outside = Math.max(2.4 * chapel, panMix + .4 * (1 - 1 / (1 + Math.max(0, reach - 8) / 12)));
         const pan = dist > 0 ? panMix * 0.9 * (-dx * ear.fz + dz * ear.fx) / dist : 0;
         if (Math.abs(outside - lastDistance) > 0.004 || outside !== lastDistance && (outside === 0 || outside === 1)) {
           doorGain.gain.setTargetAtTime(Math.pow(0.25, outside), ctx.currentTime, 0.09);
@@ -766,6 +853,19 @@
         }
         if (Math.abs(pan - lastPan) > 0.008 || pan === 0 && lastPan !== 0) {
           doorPan.pan.setTargetAtTime(pan, ctx.currentTime, 0.09); lastPan = pan;
+        }
+      }
+      // Small irregular wood pops use a free room voice and follow the room volume.
+      if (chapel > 0 && !muted && !document.hidden && (hearthWait -= dt) <= 0) {
+        hearthWait = between(.09,.43);
+        const r = BL.pokerSalons.ROOMS[0], z = r.z-r.d/2+2;
+        const distance = place(r.x,z), now = ctx.currentTime;
+        const voice = free(noises,noiseNext,now);
+        if (voice) {
+          // The vaulted room carries a little of the fire all the way to its doorway.
+          AT.level = chapel * (.19 + .81 / (1 + distance*distance/70));
+          voice.filter.frequency.setValueAtTime(between(480,2900),now);
+          taps(voice,1,0,between(.12,.4),between(.028,.18),now);
         }
       }
       if ((chipWait -= dt) <= 0) {
@@ -823,6 +923,9 @@
       timer = 0;
       // The playlist stops: its source and buffer let go, a decode or fetch still in flight dropped when it lands.
       token++;
+      mediaFetch?.abort(); mediaFetch = null;
+      if (nextMedia) { nextMedia.removeAttribute("src"); nextMedia.load(); nextMedia = null; }
+      clearMedia();
       if (source) {
         try { source.stop(); } catch { /* already ended */ }
         source.disconnect();
