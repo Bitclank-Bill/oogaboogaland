@@ -3583,6 +3583,75 @@ body.game-mode .weapon-equipment-row > :not(.weapon-hud) {
   display: none;
 }
 
+/* A levelled weapon's Levels, opened under its row: a line a level owned, its pips, name, cost and damage, and a button
+   to use it at that level, the one in use lit. */
+.keep-shop-list .keep-shop-fold[hidden] {
+  display: none;
+}
+
+.keep-shop-list .keep-shop-levels {
+  grid-column: 2 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 0 8px;
+  padding: 4px 8px;
+  list-style: none;
+  background: var(--slab-dark);
+  border: 2px solid var(--stone-dk);
+  border-radius: 9px 7px 10px 8px;
+  box-shadow: var(--tablet-shadow);
+}
+
+.keep-shop-list .keep-shop-levels[hidden] {
+  display: none;
+}
+
+.keep-shop-list .keep-shop-levels li {
+  display: grid;
+  grid-template-columns: 1fr auto auto 64px;
+  gap: 10px;
+  min-height: 30px;
+  font-size: 11px;
+  border-top: none;
+}
+
+.keep-shop-list .keep-shop-levels li + li {
+  border-top: 1px solid rgba(243, 239, 228, 0.07);
+}
+
+.keep-shop-level-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.keep-shop-levels li[data-current="true"] .keep-shop-level-name {
+  color: var(--accent-text);
+  font-weight: 700;
+}
+
+.keep-shop-level-cost {
+  font: 10px var(--mono);
+  color: var(--accent-text);
+}
+
+.keep-shop-level-damage {
+  font-size: 10px;
+  color: rgba(243, 239, 228, 0.78);
+}
+
+.keep-shop-list .keep-shop-levels button {
+  min-height: 26px;
+  padding: 0 6px;
+  font-size: 10px;
+}
+
+@media (max-width: 380px) {
+  .keep-shop-list .keep-shop-levels { grid-column: 1 / -1; }
+  .keep-shop-list .keep-shop-levels li { grid-template-columns: 1fr 64px; row-gap: 0; }
+}
+
 /* A weapon's level: four pips, filled to it. */
 .keep-level {
   display: inline-flex;
@@ -3944,9 +4013,6 @@ body.game-mode .weapon-equipment-row > :not(.weapon-hud) {
   pointer-events: none;
 }
 
-.keep-ship-act[data-state="wait"] .keep-arm-picture {
-  opacity: 0.35;
-}
 
 .keep-ship-act[data-state="on"] {
   border-color: var(--accent);
@@ -4270,6 +4336,32 @@ body.game-mode .weapon-equipment-row > :not(.weapon-hud) {
   filter: drop-shadow(0 0 6px rgba(255, 130, 30, 0.95)) drop-shadow(0 0 14px rgba(255, 100, 20, 0.7));
 }
 
+/* Over each of the four's circle, a pie of the time left, closing round to twelve o'clock: an orange tint while it works,
+   dark while it cannot be used again. */
+#keep-ship .keep-ship-act .keep-arm-picture {
+  position: relative;
+}
+
+.keep-ship-pie {
+  position: absolute;
+  inset: 9%;
+  border-radius: 50%;
+  pointer-events: none;
+  display: none;
+}
+
+.keep-ship-act:is([data-state="on"], [data-state="wait"]) .keep-ship-pie {
+  display: block;
+}
+
+.keep-ship-act[data-state="on"] .keep-ship-pie {
+  background: conic-gradient(rgba(255, 130, 20, 0.55) calc(var(--left, 0) * 360deg), transparent 0);
+}
+
+.keep-ship-act[data-state="wait"] .keep-ship-pie {
+  background: conic-gradient(rgba(0, 0, 0, 0.62) calc(var(--left, 0) * 360deg), transparent 0);
+}
+
 #keep-ship .keep-ship-act b {
   z-index: 1;
   text-shadow: 0 2px 0 #000, 0 0 6px #000;
@@ -4329,17 +4421,19 @@ body.game-mode .weapon-equipment-row > :not(.weapon-hud) {
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
 }
 
-.keep-bananas[data-pulse] {
-  animation: keep-bananas-pulse 0.25s ease-out;
+/* A banana landing in the stash: its icon swells a little and back, quickly. */
+.keep-bananas .keep-side-face[data-pulse] {
+  animation: keep-bananas-pulse 0.18s ease-out;
 }
 
 @keyframes keep-bananas-pulse {
-  0% { transform: scale(1.22); filter: brightness(1.5); }
+  0% { transform: scale(1); filter: none; }
+  40% { transform: scale(1.14); filter: brightness(1.35); }
   100% { transform: scale(1); filter: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .keep-bananas[data-pulse] { animation: none; }
+  .keep-bananas .keep-side-face[data-pulse] { animation: none; }
 }
 
 .keep-bananas svg {
