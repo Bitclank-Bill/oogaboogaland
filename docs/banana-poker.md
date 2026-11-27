@@ -29,6 +29,8 @@ The hourglass on the west side of the promenade shows the observed block height.
 
 Walk through the middle of the even-numbered table wall to reach the marble terrace. Your Ooga gets a jetpack on the deck. Hold Jump to climb, use J or the jetpack button to toggle it, and land to walk back through the doorway. The brass telescope has controls for the Moon, black hole and Earth. At the portrait camera, use **Act**, take a picture and select **Save PNG**. Leaving the camera returns you to where you stood. The three Wall of Fame plaques across the terrace from the booth rank settled player awards of at least 100 play chips observed by this browser. Returned bets are excluded. The board resets at 6 a.m. local time.
 
+Use **Act** by a booth cushion or select it to sit facing the fireplace. Move or use **Act** again to stand.
+
 At either end of the terrace, follow the marble walkway around the casino. It passes behind the bars and Genesis Vault, with views over the whale basin, and returns to the opposite end of the terrace.
 
 Fly above the eastern cornice and release Jump over the glass to land. You can walk along the curved roof and take the lit steps into the 21 Club on any visit.

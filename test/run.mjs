@@ -37884,6 +37884,34 @@ scene("poker", { label: "salons", query: "character=portlandhodl", steps: [{ nam
   const walking=await b.evaluate(`document.activeElement===document.getElementById("scene") && document.querySelector('[data-poker="focus"]').hidden`);
   record("poker floor: Action jumps past tables, and a chair offers its own table only on confirmation",floor.aisle && floor.offered && floor.jumped && floor.passed && floor.confirmed && walking,JSON.stringify({floor,walking}));
 } }] });
+scene("poker", { label: "terrace booths", steps: [{ name: "Sit at every terrace fireplace", why: "playthrough: the terrace seats face working fireplaces and return their visitor to clear floor", run: async b => {
+  await b.evaluate(`document.querySelector('[data-intro="poker"] .game-intro-go').click()`);
+  const booths=await b.evaluate(`(()=>{
+    const D=BL.scenes.poker.debug,T=BL.pokerTerrace,terrace=D.poker.terrace,player=D.pilot.player,p=player.root.position;
+    return T.booths.map(({x,z,side,seats,hearth},index)=>{
+      const seat=seats[3], approach=z+side*.68;
+      D.pilot.navigate({position:{x,y:0,z:approach},yaw:side>0?Math.PI:0,pitch:.15,dist:3});
+      __ooga.advance(.16,.04);
+      D.pilot.action();__ooga.advance(.24,.04);
+      const sat=player.camp.seat?.kind==="booth" && Math.hypot(p.x-seat.x,p.z-seat.z)<.02 &&
+        player.parts.legL.rotation.x < -1.4 && Math.cos(player.root.rotation.y)*side<-.99;
+      if(index%2===0)D.pilot.action();
+      else {
+        window.dispatchEvent(new KeyboardEvent("keydown",{key:"a",code:"KeyA"}));
+        __ooga.advance(.12,.04);
+        window.dispatchEvent(new KeyboardEvent("keyup",{key:"a",code:"KeyA"}));
+      }
+      __ooga.advance(.1,.05);
+      const mantel=terrace.hearths[index];
+      return {sat,stood:!player.camp.seat && Math.hypot(p.x-x,p.z-approach)<(index%2===0?.05:1.4) && player.hop===0,
+        front:mantel.position.x===x && mantel.position.z===hearth.z && (z-hearth.z)*side>1 &&
+          Math.cos(mantel.rotation.y)*side>.99 && mantel.children.length===3 &&
+          !T.clear(x,z,x,hearth.z,player.bodyRadius)};
+    });
+  })()`);
+  record("poker booths: sit facing the fire in all six enlarged booths and stand with Action or movement",
+    booths.length===6 && booths.every(b=>b.sat && b.stood && b.front),JSON.stringify(booths));
+} }] });
 scene("poker", { label: "waterfront", steps: [{ name: "Walk the casino waterfront", why: "playthrough: the marble promenade makes a continuous circuit from either end of the terrace", run: async b => {
   await b.evaluate(`document.querySelector('[data-intro="poker"] .game-intro-go').click()`);
   const lap=await b.evaluate(`(()=>{
@@ -37907,7 +37935,7 @@ scene("poker", { label: "waterfront", steps: [{ name: "Walk the casino waterfron
     const front=step("s","z",38.8),pastMirror=step("d","x",26.4) && grounded() && D.poker.salon===-1;
     const back=step("w","z",0),hall=step("a","x",22) && Math.abs(p.y-player.baseY)<.02;
     const T=BL.pokerTerrace,r=player.bodyRadius,{wall,booth}=BL.pokerClub;
-    const fame=wall.z===-booth.z && wall.x===booth.x && Math.cos(wall.yaw)<-.99 &&
+    const fame=wall.z===-booth.z && Math.abs(wall.x-booth.x)<=1 && Math.cos(wall.yaw)<-.99 &&
       T.clear(wall.x,wall.z-2,wall.x,wall.z-1,r) && !T.clear(wall.x,wall.z-1,wall.x,wall.z,r);
     return {fame,east,north,atVault,viewAtVault,west,alongWater,viewAtWater,front,pastMirror,back,hall,
       rail:!T.promenadeClear(-26,0,-29,0,r),glass:!T.promenadeClear(0,-39,0,-36,r),

@@ -268,7 +268,7 @@
   const roofApproach = () => avatar && highTerrace(avatar.root.position.x,avatar.root.position.y-avatar.baseY);
   const roofHeight = (x,z) => BL.pokerSalons.roofHeight(x,z,renderer.kind==="canvas2d");
   const onTerrace = (x, z) => salon < 0 && BL.pokerTerrace.contains(x, z);
-  const terracePackAllowed = cave => cave === avatar && pilot.player === cave && !seated && !panel.focused && !leaving &&
+  const terracePackAllowed = cave => cave === avatar && pilot.player === cave && !seated && !cave.camp.seat && !panel.focused && !leaving &&
     carry.phase === IDLE && !liftRide && (roofLevel() || roofApproach() || onTerrace(cave.root.position.x, cave.root.position.z));
   const packState = { owned: false, equipped: false, fuel: 0, blocked: false };
   const jetpackStatus = cave => {
@@ -382,10 +382,37 @@
     actPrompt=true;hud.setAct(act);
     if(!coarse)hud.hint(actTitle?`${actTitle} · Space: ${ACT_WORDS[act]}`:`Space: ${ACT_WORDS[act]}`,600000);
   };
+  const boothReach=1.85;
+  const canSitOutside=()=>salon<0 && pilot.player===avatar && !seated && !panel.focused && !liftRide &&
+    carry.phase===IDLE && !scripted() && !telescope.active && !photo.active && !avatar.camp.seat &&
+    onTerrace(avatar.root.position.x,avatar.root.position.z) && Math.abs(avatar.root.position.y-avatar.baseY)<.16;
+  const boothSeatAt=(x,z,reach)=>{
+    let nearest=null,distance=reach**2;
+    for(const {seat} of terraceScope.seatNodes){
+      const d=(x-seat.x)**2+(z-seat.z)**2;
+      if(d<=distance){nearest=seat;distance=d;}
+    }
+    return nearest;
+  };
+  const nearbyBoothSeat=()=>canSitOutside()?boothSeatAt(avatar.root.position.x,avatar.root.position.z,boothReach):null;
+  const sitAtBooth=seat=>{
+    if(avatar.camp.seat?.kind==="booth")return people.standPlayer(avatar);
+    const p=avatar.root.position;
+    if(!canSitOutside() || Math.hypot(p.x-seat.x,p.z-seat.z)>boothReach)return false;
+    const seatedHere=people.sitPlayer({kind:"booth",x:seat.x,y:.61,z:seat.z,ry:seat.ry,
+      floor:0,walkAt:{x:p.x,z:p.z}});
+    if(seatedHere){
+      pilot.controls.reset();
+      pilot.turnToward(seat.hearth.x,.55,seat.hearth.z);
+    }
+    return seatedHere;
+  };
   const loungeAct=()=>{
     actTitle="";
     if(!pilot.player || exterior || salons.heirlooms?.modal || carry.phase!==IDLE || scripted() || liftRide)return null;
     if(salon!==0){
+      if(avatar.camp.seat?.kind==="booth")return "STAND UP!";
+      if(nearbyBoothSeat()){actTitle="Terrace booth";return "SIT";}
       const i=roofLevel()?5:2;
       if(!seated && !panel.focused && seatTable<0 && doorAvailable(i) && doorDistance(i,avatar.root.position)<=2.9){
         actTitle=doorHint(i);return "LIFT";
@@ -1317,8 +1344,8 @@
         if(!exterior)return pilot.hooks.onOrbit(dx,dy);
         exteriorYaw-=dx*.004;exteriorPitch=clamp(exteriorPitch+dy*.003,-.31,1.08);
       },
-      onHover: (hit, p) => { if(exterior)return; if(salon===0){hud.tooltip.hide();return;} if (hit?.owner.kind === "portrait") hud.tooltip.show("Take a moon portrait",p.x,p.y); else if (hit?.owner.kind === "telescope") hud.tooltip.show("Look through the telescope", p.x, p.y); else if (hit?.owner.kind === "salon" && doorAvailable(hit.owner.index)) hud.tooltip.show(doorHint(hit.owner.index), p.x, p.y); else if (salon >= 0) hud.tooltip.hide(); else if (hit?.owner.kind === "poker") hud.tooltip.show(`Table ${hit.owner.index + 1} · ${pilot.player ? "walk up to a chair" : "select to watch"}`, p.x, p.y); else if (hit?.owner.kind === "placard") hud.tooltip.show(BL.pokerStatues.tip(hit.owner.index), p.x, p.y); else if (hit?.owner.kind === "music") hud.tooltip.show("Lounge music · select for credits", p.x, p.y); else if (hit?.owner.kind === "game") hud.tooltip.show(BL.pokerGames.TOOLTIP[BL.pokerModels.GAMES[hit.owner.index].kind], p.x, p.y); else hud.tooltip.hide(); },
-      onTap: hit => { if(exterior || liftRide)return; if(hit?.owner.kind==="landscape" && salon===0) salons.heirlooms.open(hit.owner.prop,pilot); else if(hit?.owner.kind==="heirloom") useHeirloom(hit.owner.prop); else if(hit?.owner.kind==="loungeChair") sitLounge(hit.owner.chair); else if(hit?.owner.kind === "portrait") usePhoto(); else if (hit?.owner.kind === "telescope") useScope(); else if (hit?.owner.kind === "salon") useDoor(hit.owner.index); else if (salon >= 0) return; else if (hit?.owner.kind === "poker") pickFloorTable(hit.owner.index); else if (hit?.owner.kind === "placard") openPlacard(hit.owner.index); else if (hit?.owner.kind === "music") openCredits(); else if (hit?.owner.kind === "poker-exit") leaveFloor(); else if (hit?.owner.kind === "game") hud.toast(BL.pokerGames.WATCH_ONLY); }
+      onHover: (hit, p) => { if(exterior)return; if(salon===0){hud.tooltip.hide();return;} if(hit?.owner.kind==="booth" && salon<0)hud.tooltip.show(avatar.camp.seat?.kind==="booth"?"Stand up":"Sit in the booth",p.x,p.y); else if (hit?.owner.kind === "portrait") hud.tooltip.show("Take a moon portrait",p.x,p.y); else if (hit?.owner.kind === "telescope") hud.tooltip.show("Look through the telescope", p.x, p.y); else if (hit?.owner.kind === "salon" && doorAvailable(hit.owner.index)) hud.tooltip.show(doorHint(hit.owner.index), p.x, p.y); else if (salon >= 0) hud.tooltip.hide(); else if (hit?.owner.kind === "poker") hud.tooltip.show(`Table ${hit.owner.index + 1} · ${pilot.player ? "walk up to a chair" : "select to watch"}`, p.x, p.y); else if (hit?.owner.kind === "placard") hud.tooltip.show(BL.pokerStatues.tip(hit.owner.index), p.x, p.y); else if (hit?.owner.kind === "music") hud.tooltip.show("Lounge music · select for credits", p.x, p.y); else if (hit?.owner.kind === "game") hud.tooltip.show(BL.pokerGames.TOOLTIP[BL.pokerModels.GAMES[hit.owner.index].kind], p.x, p.y); else hud.tooltip.hide(); },
+      onTap: hit => { if(exterior || liftRide)return; if(hit?.owner.kind==="booth" && salon<0)sitAtBooth(hit.owner.seat); else if(hit?.owner.kind==="landscape" && salon===0) salons.heirlooms.open(hit.owner.prop,pilot); else if(hit?.owner.kind==="heirloom") useHeirloom(hit.owner.prop); else if(hit?.owner.kind==="loungeChair") sitLounge(hit.owner.chair); else if(hit?.owner.kind === "portrait") usePhoto(); else if (hit?.owner.kind === "telescope") useScope(); else if (hit?.owner.kind === "salon") useDoor(hit.owner.index); else if (salon >= 0) return; else if (hit?.owner.kind === "poker") pickFloorTable(hit.owner.index); else if (hit?.owner.kind === "placard") openPlacard(hit.owner.index); else if (hit?.owner.kind === "music") openCredits(); else if (hit?.owner.kind === "poker-exit") leaveFloor(); else if (hit?.owner.kind === "game") hud.toast(BL.pokerGames.WATCH_ONLY); }
     });
     hud.setDestinations(Object.keys(VIEW_NAMES), VIEW_NAMES);
     hud.setAreaLabel("Ember Den");
@@ -1356,6 +1383,7 @@
     cosmos = Themes.hang({ canvas: ctx.renderer.kind === "canvas2d", sparse: ctx.renderer.kind === "canvas2d" || ctx.renderer.quality === "low" });
     const terrace = BL.pokerTerrace.build(ctx.renderer.kind === "canvas2d");
     terraceScope=terrace; S.addChild(root, terrace.root, room.hall.aquarium.root);
+    for(const {node,seat} of terrace.seatNodes){input.add(node,{kind:"booth",seat});targets.push(node);}
     weather=BL.pokerClub.weather(root,ctx.renderer.kind==="canvas2d");
     const portrait=BL.pokerClub.portraitCourt(terrace.root,ctx.renderer.kind==="canvas2d");
     input.add(portrait,{kind:"portrait"});targets.push(portrait);
@@ -1396,7 +1424,7 @@
     const name = [world.pilot, requested, BL.net.preferredCharacter()?.handle].find(n => BL.contributors.activeRoster.some(c => c.name === n && mayPick(c))) || (BL.contributors.activeRoster.find(mayPick) || BL.contributors.activeRoster[0]).name;
     world.pilot = null;
     const playerWorld = { level: 0, weapons: new Map(), magazine: { owned: false, count: 0, ammo: 0, carrier: null } };
-    const shared = { root, input, hud, game: ctx.game, world: playerWorld, playerName: name, weaponsEnabled: false, fx, viewYaw: 0, outsideActors: () => remotes ? remotes.actors() : NO_ACTORS, outsideActorHeight: BL.remotePlayers.BODY_HEIGHT, groundAt: ground, walkable: floorWalk, jetpackAllowed:terracePackAllowed, useNear: () => { if(liftRide)return true; if (carry.phase === HOLD) { throwNow(); return true; } if (scripted()) return true; if(salons.heirlooms?.modal)return true; if(loungeChair){sitLounge(loungeChair.node);return true;} if(salon===0 && useLoungeItem())return true; const chair=chairNear(); if(chair){sitLounge(chair);return true;} if (avatar.jet && avatar.hop > .18) return false; if (nearPhoto()) { usePhoto(); return true; } if (nearScope()) { useScope(); return true; } const door = nearDoor(); if (door >= 0) { useDoor(door); return true; } if (roofLevel()) return false; if (salon >= 0) return true; const i = nearPlacard(); if (i >= 0) openPlacard(i); else if (nearMusic()) openCredits(); else if (nearGame()) hud.toast(BL.pokerGames.WATCH_ONLY); else return false; return true; }, residentPose: cave => {
+    const shared = { root, input, hud, game: ctx.game, world: playerWorld, playerName: name, weaponsEnabled: false, fx, viewYaw: 0, outsideActors: () => remotes ? remotes.actors() : NO_ACTORS, outsideActorHeight: BL.remotePlayers.BODY_HEIGHT, groundAt: ground, walkable: floorWalk, jetpackAllowed:terracePackAllowed, useNear: () => { if(liftRide)return true; if (carry.phase === HOLD) { throwNow(); return true; } if (scripted()) return true; if(salons.heirlooms?.modal)return true; if(loungeChair){sitLounge(loungeChair.node);return true;} if(salon===0 && useLoungeItem())return true; const chair=chairNear(); if(chair){sitLounge(chair);return true;} if (avatar.jet && avatar.hop > .18) return false; const boothSeat=nearbyBoothSeat(); if(boothSeat && sitAtBooth(boothSeat))return true; if (nearPhoto()) { usePhoto(); return true; } if (nearScope()) { useScope(); return true; } const door = nearDoor(); if (door >= 0) { useDoor(door); return true; } if (roofLevel()) return false; if (salon >= 0) return true; const i = nearPlacard(); if (i >= 0) openPlacard(i); else if (nearMusic()) openCredits(); else if (nearGame()) hud.toast(BL.pokerGames.WATCH_ONLY); else return false; return true; }, residentPose: cave => {
       // Walking to a chair, lifting, winding up and throwing, the scene poses the visitor's Ooga itself.
       if(cave===avatar && liftRide)return true;
       if(cave===avatar && bridgeTime){
@@ -1454,6 +1482,11 @@
         chaisePose(cave);return;
       }
       if(cave.root.quaternion===chaiseRotation)cave.root.quaternion=null;
+      // A booth sitter shares the cushion position and hip height in the ordinary body pose.
+      if(BL.pokerTerrace.contains(rec.x,rec.z) && Math.abs(rec.y-(.61+.08*cave.traits.height-cave.baseY))<.07 &&
+        boothSeatAt(rec.x,rec.z,.10)){
+        BL.pokerModels.sitPose(cave);return;
+      }
       const state = BL.pokerPresence.stateOf(BL.pokerModels.TABLES, BL.pokerModels.SEATS, owner, rec);
       if (state === 1) {
         BL.pokerModels.sitPose(cave);
@@ -1503,7 +1536,7 @@
     gameCtx.crowd = crowd;
     seatSmokes = Array.from({ length: SEAT_SMOKES }, (_, i) => BL.pokerCrowd.smoke({ root: room.root, lite: renderer.kind === "canvas2d", seed: 7919 * (i + 1) }));
     scene.root = root; scene.camera = camera; scene.input = input;
-    scene.debug = { camera, pilot, hud, crew: people, cavemen: people.cavemen, controls: pilot.controls, poker: { session, room, salons, get salon() { return salon; }, action, select, snapshots, renderOpts, crowd, audio, cosmos, games: room.games, react: onReaction, get selected() { return selected; }, get carry() { return carry; }, get flyer() { return flyer; }, get walker() { return walker; }, get returns() { return returns; }, get reticle() { return reticle; }, get musicPlaque() { return musicPlaque; }, openCredits, npcAt,
+    scene.debug = { camera, pilot, hud, crew: people, cavemen: people.cavemen, controls: pilot.controls, poker: { session, room, salons, terrace, get salon() { return salon; }, action, select, snapshots, renderOpts, crowd, audio, cosmos, games: room.games, react: onReaction, get selected() { return selected; }, get carry() { return carry; }, get flyer() { return flyer; }, get walker() { return walker; }, get returns() { return returns; }, get reticle() { return reticle; }, get musicPlaque() { return musicPlaque; }, openCredits, npcAt,
       // The tells' state by chair and their public views by table, read only; `calm` stands in for the reduced-motion wish.
       get tells() { return tells; }, get tellViews() { return tellViews; }, get calm() { return calm; }, set calm(on) { calm = !!on; } } };
     if (new URLSearchParams(location.search).get("pokerLive") === "1") action("connect");

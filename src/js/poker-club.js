@@ -3,7 +3,7 @@
   "use strict";
   const BL=window.BL, M=BL.models, S=BL.scene, tau=2*Math.PI;
   const brass="#c3995f", edge="#f0c888", copper="#a66240", dark="#30272a", enamel="#244b43", opal="#ffe7b4";
-  const booth=Object.freeze({x:33,z:-19}), wall=Object.freeze({x:booth.x,z:-booth.z,yaw:Math.PI});
+  const booth=Object.freeze({x:33,z:-19}), wall=Object.freeze({x:booth.x-1,z:-booth.z,yaw:Math.PI});
   const box=(x,y,z,w,h,d,color,emissive=.18)=>M.box({w,h,d,color,emissive,offset:{x,y,z}});
   const turn=(x,y,z,profile,color,n=12,emissive=.25)=>M.moved(M.lathe({profile,segments:n,color,emissive}),x,y,z);
   const node=(root,geometry,x=0,y=0,z=0)=>{

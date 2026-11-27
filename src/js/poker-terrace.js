@@ -440,13 +440,33 @@
   const booths=[];
   const fixtures=[{x:station.x,z:station.z,r:.55}];
   for(const side of [-1,1]) for(const [x,offset] of [[30.6,9],[40,17.8],[far-5.7,8.4]]){
-    const z=side*offset, planterX=x-2.36, planterZ=z+side*1.60;
-    booths.push({x,z,side,planterX,planterZ});
-    fixtures.push({x,z,r:.50},{x:planterX,z:planterZ,r:.50});
-    for(let i=0;i<7;i++){const a=.12+i*(Math.PI-.24)/6;fixtures.push({x:x+1.48*Math.cos(a),z:z+side*1.48*Math.sin(a),r:.52});}
+    const z=side*offset, planterX=x-2.65, planterZ=z+side*2.65, seats=[];
+    const hearth={x,z:z-side*1.8,hx:1.18,hz:.52};
+    booths.push({x,z,side,planterX,planterZ,seats,hearth});
+    fixtures.push({x:planterX,z:planterZ,r:.50});
+    for(let i=0;i<7;i++){
+      const a=.12+i*(Math.PI-.24)/6, dx=Math.cos(a),dz=side*Math.sin(a);
+      const seat={x:x+2.2*dx,z:z+2.2*dz,ry:Math.atan2(-dx,-dz),r:.64,hearth};
+      seats.push(seat);fixtures.push(seat);
+    }
   }
+  // A low marble mantel keeps the view across the terrace open from the seat.
+  const hearthFrame=lite=>{
+    const marble=(w,h,d,y)=>K.slab({w,h,d,seed:73,veins:lite?3:8,on:"top",offset:{x:0,y,z:0}});
+    const parts=[marble(2.36,.15,1.04,.13),box(0,.58,-.25,2.17,.81,.25,dark),
+      marble(2.32,.15,.93,1.1),box(0,1.015,0,2.21,.035,.85,edge)];
+    for(const side of [-1,1]){
+      const x=side*.94;
+      parts.push(box(x,.60,0,.27,.79,.75,dark),box(x,.61,.388,.19,.75,.025,copper),
+        box(x,.60,.41,.044,.64,.025,edge),box(x,.26,.04,.35,.13,.81,brass),
+        box(x,.94,.04,.35,.10,.81,brass));
+    }
+    for(let i=-3;i<=3;i++)parts.push(beam(i*.19,.24,.03,i*.19+.06,.30,.32,.085,i%2?copper:"#cb5021"));
+    return K.staticMesh(M.merge(...parts));
+  };
   const fixturesClear = (ax,az,bx,bz,r) => {
     for(const f of BL.pokerClub.fixtures) if(BL.pokerModels.crosses(ax,az,bx,bz,r,f)) return false;
+    for(const {hearth} of booths) if(BL.pokerModels.crosses(ax,az,bx,bz,r,hearth))return false;
     const dx=bx-ax,dz=bz-az,dd=dx*dx+dz*dz;
     for(const f of fixtures){
       const u=dd?Math.max(0,Math.min(1,((f.x-ax)*dx+(f.z-az)*dz)/dd)):0;
@@ -607,16 +627,33 @@
       p.push(lamp(24.15,2.26,z-s*.22,.68));
     }
     install();
-    for(const {x:cx,z:bz,side:s,planterX:px,planterZ:pz} of booths){
-      for(let i=0;i<7;i++){
-        const a=.12+i*(Math.PI-.24)/6, x=cx+1.48*Math.cos(a),zz=bz+s*1.48*Math.sin(a);
-        const padded=(w,h,d,y,z,color)=>M.bevelBox({w,h,d,color,bevel:.064,offset:{x:0,y,z}});
-        const cushion=M.merge(box(0,.28,0,.76,.35,.87,dark),box(0,.235,0,.78,.036,.89,edge),
-          padded(.76,.19,.84,.50,0,leather),padded(.75,.72,.23,.83,.36,leather),
-          box(0,1.19,.36,.74,.032,.20,brass),box(0,.87,.23,.028,.04,.018,brass));
-        p.push(M.moved(M.turnedY(cushion,Math.atan2(Math.cos(a),s*Math.sin(a))),x,0,zz));
+    const seatNodes=[],hearths=[],fire=BL.pokerHearth.fire(true),frame=hearthFrame(lite);
+    const padded=(w,h,d,y,z,color)=>M.bevelBox({w,h,d,color,bevel:.075,offset:{x:0,y,z}});
+    const cushion=K.staticMesh(M.merge(box(0,.29,0,1.11,.38,1.08,dark),box(0,.235,0,1.13,.036,1.10,edge),
+      padded(1.12,.22,1.05,.50,0,leather),padded(1.09,.83,.25,.91,.44,leather),
+      box(0,1.34,.44,1.04,.032,.21,brass),box(0,.95,.302,.034,.048,.018,brass)));
+    for(const {x,z,side,planterX:px,planterZ:pz,seats,hearth} of booths){
+      // A continuous leather rail and brass piping join the individual cushions into a banquette.
+      for(let j=1;j<=14;j++){
+        const a=.12+(j-1)*(Math.PI-.24)/14,b=.12+j*(Math.PI-.24)/14;
+        for(const [radius,y,width,color] of [[2.63,1.23,.16,leather],[2.64,1.33,.045,edge]]){
+          p.push(beam(x+radius*Math.cos(a),y,z+side*radius*Math.sin(a),
+            x+radius*Math.cos(b),y,z+side*radius*Math.sin(b),width,color));
+        }
       }
-      p.push(turned(cx,0,bz,[[0,.06],[.31,.06],[.29,.13],[.075,.20],[.075,.68],[.48,.70],[.5,.76],[0,.76]],brass),lamp(cx,.76,bz,.33));
+      for(const seat of seats){
+        const node=add(root,cushion,seat.x,0,seat.z);
+        node.rotation.y=seat.ry+Math.PI;
+        seatNodes.push({node,seat});
+      }
+      const mantel=add(root,frame,hearth.x,0,hearth.z);
+      mantel.rotation.y=side<0?Math.PI:0;
+      hearths.push(mantel);
+      for(const plume of fire.plumes){
+        const flame=add(mantel,plume.geometry,plume.x*.50,.26,.24-(plume.z-1)*.32);
+        flame.rotation.y=Math.PI;
+        Object.assign(flame.scale,{x:plume.rx*.50,y:plume.scaleY*.34,z:plume.rz*.36});
+      }
       p.push(turned(px,0,pz,[[0,.06],[.31,.06],[.45,.49],[.48,.53],[.47,.60],[0,.60]],copper));
       for(let i=0;i<(lite?8:17);i++){
         const a=i*2.40,len=.72+(i%4)*.15,h=.9+(i%3)*.24,leaf=M.merge();
@@ -647,9 +684,10 @@
     install();
     const engines=miningShelf(root,add,lite);
     const bartender=service(root,add), guests=company(root,lite);
-    const updateService=(t,calm,listener,fx,pressureAge=Infinity)=>{bartender(t,calm);guests.update(t,calm,listener,fx);engines.update(t,calm,pressureAge);};
+    const updateService=(t,calm,listener,fx,pressureAge=Infinity)=>{bartender(t,calm);guests.update(t,calm,listener,fx);engines.update(t,calm,pressureAge);
+      if(listener && contains(listener.root.position.x,listener.root.position.z))fire.update(calm?0:t);};
     const scope=mount(station); S.addChild(root,scope.root);
-    return {root,engines,updateService,guestsClear:guests.clear,yaw:scope.yaw,pitch:scope.pitch,target:scope.target,station};
+    return {root,engines,seatNodes,hearths,updateService,guestsClear:guests.clear,yaw:scope.yaw,pitch:scope.pitch,target:scope.target,station};
   };
   const mount=station=>{
     const root=S.createNode(), p=[];
@@ -674,5 +712,5 @@
     for(const y of [-.43,-.13,.23,.60]){const r=y>.2?.165:.134;const band=turned(0,0,0,[[r,y],[r+.007,y+.016],[r,y+.044]],dark,16);S.addChild(pitch,S.createNode({geometry:M.turnedX(band,Math.PI/2)}));}
     const target=add(pitch,M.turnedX(tube,Math.PI/2));return {root,yaw,pitch,target,station};
   };
-  BL.pokerTerrace=Object.freeze({station,inner,halfSpan,outer,contains,clear,promenadeClear,serviceX,cocktail,bar,roofBar,mount,build});
+  BL.pokerTerrace=Object.freeze({station,booths,inner,halfSpan,outer,contains,clear,promenadeClear,serviceX,cocktail,bar,roofBar,mount,build});
 })();
