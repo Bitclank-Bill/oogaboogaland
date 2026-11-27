@@ -37685,11 +37685,18 @@ scene("poker", { label: "salons", query: "character=portlandhodl", steps: [{ nam
   await b.evaluate(`document.querySelector('[data-intro="poker"] .game-intro-go').click()`);
   const route = await b.evaluate(`(() => {
     const D = BL.scenes.poker.debug, P = D.poker, route = [];
+    const rides=[];
     const use = i => {
       const d = BL.pokerSalons.DOORS[i], r = BL.pokerSalons.ROOMS[d[0]], t = P.salons.targets[i].position;
       D.pilot.navigate({ position: { x: t.x, y: r ? r.y : 0, z: t.z + (i === 3 || i === 4 || i === 6 ? -1.45 : 1.45) }, yaw: 0, pitch: 0.17, dist: 3 });
       D.pilot.action();
       __ooga.advance(0.1, 1 / 30);
+      if(i===5 || i===2 && __ooga.game.state.emberDen.visits>=21){
+        __ooga.advance(2.25,1/30);
+        const car=P.salons.car.position, body=D.pilot.player, at=body.root.position;
+        rides.push(car.y>1 && car.y<16 && Math.hypot(at.x-car.x,at.y-body.baseY-car.y,at.z-car.z)<.01);
+        __ooga.advance(2.6,1/30);
+      }
       route.push(P.salon);
     };
     use(1);
@@ -37800,7 +37807,7 @@ scene("poker", { label: "salons", query: "character=portlandhodl", steps: [{ nam
     __ooga.advance(.15,1/30);
     const sky=wide && donor && hole.radius===41.6 && hole.planetRadius===hole.radius/100 && accretion.time>beforeFlow;
     lens.querySelector('[aria-label="Leave telescope"]').click();
-    return { route, closedInside, reopened, closedOutside, hallLamps, sky, reveal, dodged, reached, sitting, seatedPick, pickInfo, stood, leftChaise, rightChaise, leftByWalking, collected, saved: BL.game.create().state.emberDen, icyCore, hidden: !glyph.parent.visible, scope:roofOpened && opened && moved && zoomed && centered && !lens.open && D.camera.fov>fov };
+    return { route, rides, closedInside, reopened, closedOutside, hallLamps, sky, reveal, dodged, reached, sitting, seatedPick, pickInfo, stood, leftChaise, rightChaise, leftByWalking, collected, saved: BL.game.create().state.emberDen, icyCore, hidden: !glyph.parent.visible, scope:roofOpened && opened && moved && zoomed && centered && !lens.open && D.camera.fov>fov };
   })()`);
   const obstructed=await b.evaluate(`(()=>{
     const d=BL.pokerSalons.DOORS[0],shelf=BL.pokerSpeakeasy.shelf(true,d[2],d[3]),r=.48;
@@ -37831,7 +37838,8 @@ scene("poker", { label: "salons", query: "character=portlandhodl", steps: [{ nam
   record("poker sky: the 83.2 m shadow and 1:100 donor advance on the scene clock and center in the eyepiece", route.sky);
   record("poker terrace: use the telescope, aim, magnify, reacquire the moon and leave the eyepiece", route.scope);
   record("poker rooms: the icy ₿IFRÖST core turns on its pedestal in Cold Storage and leaves the view on exit", route.icyCore && route.hidden);
-  record("poker rooms: whitepaper, founder's pass, vault and lift lead to their rooms, the roof holds until visit 21, and all routes return",
+  record("poker lift: the cabin carries the visitor between floors in both directions",route.rides.length===2 && route.rides.every(Boolean),JSON.stringify(route.rides));
+  record("poker rooms: whitepaper, founder's pass, vault and lift lead to their rooms, the upward lift unlocks on visit 21, and all routes return",
     route.reveal && route.reached && route.sitting && route.stood && route.collected && route.route.join() === "-1,-1,0,0,-1,1,-1,-1,2,-1" && route.saved.visits === 21 && route.saved.lounge && route.saved.pass && !route.saved.bigWin, JSON.stringify(route));
   const portrait=await b.evaluate(`(async()=>{
     const D=BL.scenes.poker.debug, booth=BL.pokerClub.booth;
@@ -37874,6 +37882,47 @@ scene("poker", { label: "salons", query: "character=portlandhodl", steps: [{ nam
   await b.key(" ");
   const walking=await b.evaluate(`document.activeElement===document.getElementById("scene") && document.querySelector('[data-poker="focus"]').hidden`);
   record("poker floor: Action jumps past tables, and a chair offers its own table only on confirmation",floor.aisle && floor.offered && floor.jumped && floor.passed && floor.confirmed && walking,JSON.stringify({floor,walking}));
+} }] });
+scene("poker", { label: "rooftop", query: "character=portlandhodl", steps: [{ name: "First visit by terrace and rooftop elevator", why: "playthrough: walk across the roof and call the lift down before the upward ride unlocks", run: async b => {
+  await b.evaluate(`document.querySelector('[data-intro="poker"] .game-intro-go').click()`);
+  const rooftop=await b.evaluate(`(()=>{
+    const D=BL.scenes.poker.debug, player=D.pilot.player, p=player.root.position, V=BL.pokerVault, R=BL.pokerSalons;
+    D.pilot.navigate({position:{x:29,y:0,z:0},yaw:0,pitch:.15,dist:3});
+    __ooga.advance(.2,1/30);
+    const hold=(key,code,down)=>window.dispatchEvent(new KeyboardEvent(down?"keydown":"keyup",{key,code}));
+    const until=(done,seconds)=>{for(let i=0;i<seconds*30 && !done();i++)__ooga.advance(1/30,1/30);return done();};
+    hold(" ","Space",true);
+    const climbed=until(()=>p.y-player.baseY>V.RIDGE+1,4);
+    hold("a","KeyA",true);
+    const crossed=until(()=>p.x<=18,4);
+    hold("a","KeyA",false);hold(" ","Space",false);
+    const landed=until(()=>player.hop===0 && Math.abs(p.y-player.baseY-V.surfaceAt(p.x,false))<.03,6);
+    BL.scenes.poker.onKey(new KeyboardEvent("keydown",{key:"j"}));
+    const walk=(key,done,seconds)=>{
+      const code="Key"+key.toUpperCase();
+      hold(key,code,true);const reached=until(done,seconds);hold(key,code,false);return reached;
+    };
+    const landingY=p.y;
+    const traversed=walk("a",()=>p.x<=R.stairX+.1,8) && p.y>landingY+2 && !player.jet && player.hop===0;
+    const entered=walk("w",()=>p.z<=-23,12) && R.onDeck(p.x,p.z) && D.poker.salon===2 &&
+      Math.abs(p.y-player.baseY-R.ROOMS[2].y)<.03;
+    // Walk between the Wall of Fame and the fireside seats to the upper call panel.
+    const panel=D.poker.salons.targets[5].position;
+    const reached=walk("d",()=>p.x>=panel.x-.55,8) && walk("w",()=>p.z<=panel.z+.7,5);
+    const firstVisit=__ooga.game.state.emberDen.visits<21 && !__ooga.game.state.emberDen.bigWin;
+    D.pilot.action();__ooga.advance(.8,1/30);
+    const car=D.poker.salons.car.position;
+    const called=car.y>0 && car.y<17 && Math.abs(p.y-player.baseY-17)<.03;
+    __ooga.advance(3.2,1/30);
+    const riding=car.y>0 && car.y<17 && Math.hypot(p.x-car.x,p.z-car.z,p.y-player.baseY-car.y)<.03;
+    __ooga.advance(3,1/30);
+    const returned=D.poker.salon===-1 && car.y===0 && Math.abs(p.y-player.baseY)<.03;
+    D.pilot.action();__ooga.advance(2,1/30);
+    return {climbed,crossed,landed,traversed,entered,reached,firstVisit,called,riding,returned,locked:car.y===0 && D.poker.salon===-1};
+
+  })()`);
+  record("poker rooftop: fly from the terrace, land, walk across the vault into the club and call the elevator down on a first visit",
+    Object.values(rooftop).every(Boolean),JSON.stringify(rooftop));
 } }] });
 scene("poker", { label: "canvas2d", query: "canvas2d=1", steps: [{ name: "poker canvas2d", why: "rule: the floor and table controls work on the fallback renderer", run: async b => {
   await b.evaluate(`document.querySelector('[data-intro="poker"] .game-intro-go').click()`);
@@ -40884,7 +40933,7 @@ const pokerVaultChecks = (BL) => {
     const glassOk = glazeOk && [[full, false], [lite, true]].every(([b, l]) => {
       const g = glassNodes(b), set = new Set(g.map(n => n.geometry)), q = V.parts(l);
       return g.length > 0 && b.glass.length === set.size && b.glass.every(x => set.has(x)) && g.every(n => !n.geometry.glass && n.geometry.glassOpacity === GZ.opacity && n.geometry.fogPierce === GZ.pierce && n.geometry.castShadow === false) &&
-        q.panes.every(x => x.glassGrazing === GZ.roof) && q.lunette.glass.glassGrazing === GZ.wall &&
+        q.panes.every(x => x.glassGrazing === GZ.roof && faces(x)===2 && Array.from(faceAt(x,0).i).reverse().every((v,i)=>v===faceAt(x,1).i[i])) && q.lunette.glass.glassGrazing === GZ.wall &&
         solidNodes(b).every(n => n.geometry === q.purlin ? n.geometry.castShadow === false : n.geometry.castShadow !== false);
     });
     record("poker vault: its panes and lunettes are nearly clear reflective glass that casts no shadow, paler toward a glancing view on the lunettes than on the roof, and every gold member but the purlins casts one", glassOk, JSON.stringify(GZ));
@@ -40896,8 +40945,8 @@ const pokerVaultChecks = (BL) => {
     };
     const p = V.parts(false), pl = V.parts(true), c = share(full), cl = share(lite), rows = V.JOINS.full.length - 1, rowsLite = V.JOINS.lite.length - 1;
     const bays = V.RIBS.length - 1;
-    const shared = p.panes.length === rows && p.panes.every(g => c.get(g) === 2 * bays) && c.get(p.rib) === V.RIBS.length && c.get(p.purlin) === 2 * (rows - 1) * bays &&
-      pl.panes.length === rowsLite && pl.panes.every(g => cl.get(g) === 2 * bays) && cl.get(pl.rib) === V.RIBS.length && cl.get(pl.purlin) === 2 * (rowsLite - 1) * bays &&
+    const shared = p.panes.length === rows && p.panes.every((g,i) => c.get(g) === 2 * bays + (i===rows-1?3:0)) && c.get(p.rib) === V.RIBS.length && c.get(p.purlin) === 2 * (rows - 1) * bays &&
+      pl.panes.length === rowsLite && pl.panes.every((g,i) => cl.get(g) === 2 * bays + (i===rowsLite-1?3:0)) && cl.get(pl.rib) === V.RIBS.length && cl.get(pl.purlin) === 2 * (rowsLite - 1) * bays &&
       rows >= 8 / 2 && rows <= 10 / 2 && V.parts(false).rib === p.rib &&
       nodesOf(full.root).every((n, i) => n.geometry === nodesOf(again.root)[i].geometry);
     record("poker vault: one pane geometry a facet row (8 to 10 across), one rib and one purlin geometry, each instanced along the hall, and a rebuild shares all",
@@ -41080,8 +41129,16 @@ const pokerGlazingChecks = (BL) => {
         if (d[0] > 0 && Math.abs(atZ) < G.OPEN && atY < G.HEAD) continue;
         const doorT=(G.barGlass.z-z)/d[2], doorX=x+doorT*d[0], doorY=1.7+doorT*d[1];
         if(d[2]<0 && Math.abs(doorX+G.BOOK_X)<G.BOOK_HALF && doorY<BL.pokerLoungeDoor.crown(doorX+G.BOOK_X)) continue;
+        // The car passes through a rectangle cut into the last planar facet.
+        const V=BL.pokerVault, lift=V.LIFT, slope=V.surfaceAt(lift.x+1,set)-V.surfaceAt(lift.x,set);
+        const liftT=(V.surfaceAt(lift.x,set)+slope*(x-lift.x)-o[1])/(d[1]-slope*d[0]);
+        if(liftT>0 && Math.abs(x+d[0]*liftT-lift.x)<lift.half && Math.abs(z+d[2]*liftT-lift.z)<lift.half)continue;
         if (!(s < Infinity) || p[1] >= 17 || Math.abs(p[0]) > G.SILL.outer + 0.06 || Math.abs(p[2]) > G.SILL.endOuter + 0.1) escaped.push([x, z, e, k]);
       }
+      const lift=BL.pokerVault.LIFT, roofRay=(x,z)=>first([x,8,z],[0,1,0],high).s;
+      record(`poker lift: the shaft clears the glass and has glazing on four sides (${tag})`,
+        roofRay(lift.x,lift.z)===Infinity && [[-1,0],[1,0],[0,-1],[0,1]].every(([dx,dz])=>
+          Number.isFinite(roofRay(lift.x+dx*(lift.half+.08),lift.z+dz*(lift.half+.08)))));
       // ... and the slab and flat beams are gone: no face of the shell at or over the wall tops reaches 40 m across.
       let slab = 0;
       for (const t of tris(shell)) { const ys = t.map(q => q[1]), xs = t.map(q => q[0]); if (Math.min(...ys) > 8.2 && Math.max(...xs) - Math.min(...xs) > 40 && t.some(q => Math.abs(q[2]) < 36)) slab++; }
@@ -41178,12 +41235,11 @@ const pokerGlazingChecks = (BL) => {
       // glass, and every sconce flame and cup glows with no light of its own.
       const kit = new Set(nodesOf(full.root).map(n => n.geometry).filter(Boolean)), vaultKit = nodesOf(room.vault.root).some(n => kit.has(n.geometry) && n.geometry !== undefined);
       // Re-pinned (wave 3, Task A): the lounges' eight armchairs are furniture of their own, not the glazing's; the rest stay 24.
-      // Re-pinned (the shrink in plan): the fifteen high-top cocktail tables are the crowd's furniture, not the glazing's.
       // Re-pinned (the gaming floor): the four roulette and craps tables are the gaming floor's walk blocks, not the
       // glazing's; the rest stay 24.
       const stage=BL.pokerBandstand.floor;
       const hasStage=stage.x < -22 && stage.z===0 && stage.hz>stage.hx && P.FURNITURE.filter(f=>f===stage).length===1 && !P.walkable(stage.x,stage.z,stage.x,stage.z,0,2,{bodyRadius:.4});
-      const quiet = hasStage && P.FURNITURE.filter(f => f!==stage && f.kind !== "armchair" && f.kind !== "highTop" && f.kind !== "hourglass" && f.kind !== "game" && f.kind !== "eraSign" && f.kind !== "founderChair").length === 24 && P.FURNITURE.filter(f=>f.kind==="eraSign" && f.solid).length === P.TABLES.length && P.FURNITURE.filter(f=>f.kind==="founderChair" && f.solid).length === 1 && P.FURNITURE.filter(f => f.kind === "game").length === 4 && P.FURNITURE.filter(f => f.kind === "highTop").length === 14 && P.FURNITURE.filter(f => f.kind === "hourglass" && f.hx === BL.pokerHourglass.RADIUS).length === 1 && P.FURNITURE.every(f => !/glaz|sill|terrace|rail|sconce|portal/.test(f.kind)) && P.CLUB_LIGHTS.length === 32 &&
+      const quiet = hasStage && P.FURNITURE.filter(f => f!==stage && f.kind !== "armchair" && f.kind !== "lift" && f.kind !== "hourglass" && f.kind !== "game" && f.kind !== "eraSign" && f.kind !== "founderChair").length === 24 && P.FURNITURE.filter(f=>f.kind==="eraSign" && f.solid).length === P.TABLES.length && P.FURNITURE.filter(f=>f.kind==="founderChair" && f.solid).length === 1 && P.FURNITURE.filter(f => f.kind === "game").length === 4 && !P.FURNITURE.some(f => f.kind === "highTop") && P.FURNITURE.filter(f=>f.kind==="lift" && f.solid).length===1 && P.FURNITURE.filter(f => f.kind === "hourglass" && f.hx === BL.pokerHourglass.RADIUS).length === 1 && P.FURNITURE.every(f => !/glaz|sill|terrace|rail|sconce|portal/.test(f.kind)) && P.CLUB_LIGHTS.length === 32 &&
         P.walkable(22.5, 0, 23.5, 0, 0, 2, { bodyRadius: 0.4 }) && !P.walkable(0, 35, 0, 37, 0, 2, { bodyRadius: 0.4 }) && room.glazing.root.parent === env;
       const sconces = nodesOf(room.glazing.root).filter(n => n.geometry === G.parts(false).flame), cups = nodesOf(room.glazing.root).filter(n => n.geometry === G.parts(false).cup);
       const pier = cols.find(n=>n.position.x<0 && n.position.z===0);

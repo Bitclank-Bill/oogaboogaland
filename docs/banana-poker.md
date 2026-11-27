@@ -29,7 +29,9 @@ The hourglass on the west side of the promenade shows the observed block height.
 
 Walk through the middle of the even-numbered table wall to reach the marble terrace. Your Ooga gets a jetpack on the deck. Hold Jump to climb, use J or the jetpack button to toggle it, and land to walk back through the doorway. The brass telescope has controls for the Moon, black hole and Earth. At the portrait camera, use **Act**, take a picture and select **Save PNG**. Leaving the camera returns you to where you stood. The three plaques beside the booth rank settled player awards of at least 100 play chips observed by this browser. Returned bets are excluded. The board resets at 6 a.m. local time.
 
-Gate 21 at the east bar leads to the rooftop. The gate opens on the twenty-first visit or when you win a share of a non-refund pot worth at least 100 play chips. That win also opens Cold Storage. Upstairs, there is a fireside bar, a second telescope and a copy of the Wall of Fame. A hooded figure walks the rail at 9:21 p.m. local time. The marked return control leads back to the gaming floor.
+Fly above the eastern cornice and release Jump over the glass to land. You can walk along the curved roof and take the lit steps into the 21 Club on any visit.
+
+The glass elevator near the east bar also serves the club. Use **Act** at its panel to ride. The upward ride unlocks on the twenty-first visit or when you win a share of a non-refund pot worth at least 100 play chips. That win also opens Cold Storage. Upstairs, there is a fireside bar, a second telescope and a copy of the Wall of Fame. A hooded figure walks the rail at 9:21 p.m. local time. The Gaming Floor control calls the car for the ride down.
 
 The vault-side jazz stage counts blocks until the next halving. The river, dome and Whale Watch aquarium also use recent transactions sampled by the existing mempool socket. A passing whale represents a transaction with at least 10 BTC in total outputs, including change. A new high in Kraken’s BTC/USD trading history brings up the hall lights and sounds a short fanfare. The first reading establishes a silent baseline.
 
@@ -291,9 +293,7 @@ at the knees, with the thighs over the cushion and the calves below its front ed
 back pad meets the Ooga's back and its carved crest stands at 1.06 m, about a
 seated Ooga's shoulder. Each chair's front is about 0.15 m from the rail, so a
 seated Ooga is at the table. The table lamps hang 0.6 m lower than before, as
-the tables came down 0.6 m, and closer together over the smaller felt. Fifteen
-high-top cocktail tables (a small marble top at 0.95 m on a gold stem) stand
-beside the tables, where guests gather in threes with their drinks, and each
+the tables came down 0.6 m, and closer together over the smaller felt. Guests gather in threes with their drinks in the open aisles, and each
 table has two rings of watchers' places. The dealer
 gorilla stands about as tall as a standing guest. Bar stools are 0.62 m at a
 0.95 m counter whose marble is set back under the top; the cashier's counter is

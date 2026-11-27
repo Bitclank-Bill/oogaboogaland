@@ -661,5 +661,5 @@
     for(const y of [-.43,-.13,.23,.60]){const r=y>.2?.165:.134;const band=turned(0,0,0,[[r,y],[r+.007,y+.016],[r,y+.044]],dark,16);S.addChild(pitch,S.createNode({geometry:M.turnedX(band,Math.PI/2)}));}
     const target=add(pitch,M.turnedX(tube,Math.PI/2));return {root,yaw,pitch,target,station};
   };
-  BL.pokerTerrace=Object.freeze({station,halfSpan,outer,contains,clear,serviceX,cocktail,bar,roofBar,mount,build});
+  BL.pokerTerrace=Object.freeze({station,inner,halfSpan,outer,contains,clear,serviceX,cocktail,bar,roofBar,mount,build});
 })();
