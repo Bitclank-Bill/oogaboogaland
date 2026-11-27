@@ -12,8 +12,8 @@ The ten-table floor has one look, Banana Club. Read
 [poker-protocol.md](poker-protocol.md) for the protocol, service commands,
 security assumptions and hosting requirements.
 
-The current interface revision adds a filtered table browser, a clearer betting
-dock and live connection feedback, and the table view now shows the room
+Walk up to a chair to open its table. The betting dock shows live connection
+feedback, and the table view shows the room
 behind it, a face at every seat, the pot's chips and the dealer's own gorilla.
 See [poker-interface.md](poker-interface.md)
 for the interaction changes and remaining play-tests, and
@@ -27,7 +27,9 @@ Follow the stream of amber blocks past the Bitcoin-orange Charging Bull to the G
 
 The hourglass on the west side of the promenade shows the observed block height. Gold sand drains according to the time since the tip and the recent average block interval. When a new tip arrives, the height lifts and a two-tone chime sounds. For 15 seconds, orange light travels across the three chandeliers from the hourglass toward the vault. The block hash selects which crystal facets and table bank catch the light first. With reduced motion, the chandeliers brighten together, hold steady, and fade gradually. On compact screens, one shaft lights up and reflections concentrate on the watched or nearest table. Opening the room on an existing tip is quiet. The sound follows the room audio controls.
 
-Walk through the middle of the even-numbered table wall to reach the marble terrace. Your Ooga gets a jetpack on the deck. Hold Jump to climb, use J or the jetpack button to toggle it, and land to walk back through the doorway. The brass telescope has controls for the Moon, black hole and Earth. At the portrait camera, use **Act**, take a picture and select **Save PNG**. Leaving the camera returns you to where you stood. The three plaques beside the booth rank settled player awards of at least 100 play chips observed by this browser. Returned bets are excluded. The board resets at 6 a.m. local time.
+Walk through the middle of the even-numbered table wall to reach the marble terrace. Your Ooga gets a jetpack on the deck. Hold Jump to climb, use J or the jetpack button to toggle it, and land to walk back through the doorway. The brass telescope has controls for the Moon, black hole and Earth. At the portrait camera, use **Act**, take a picture and select **Save PNG**. Leaving the camera returns you to where you stood. The three Wall of Fame plaques across the terrace from the booth rank settled player awards of at least 100 play chips observed by this browser. Returned bets are excluded. The board resets at 6 a.m. local time.
+
+At either end of the terrace, follow the marble walkway around the casino. It passes behind the bars and Genesis Vault, with views over the whale basin, and returns to the opposite end of the terrace.
 
 Fly above the eastern cornice and release Jump over the glass to land. You can walk along the curved roof and take the lit steps into the 21 Club on any visit.
 

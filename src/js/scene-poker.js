@@ -262,7 +262,7 @@
   };
   let salons = null, salon = -1, telescope = null, byScope = false, photo = null, terraceScope = null, updateWall = null, shownWins = null, nextMorningCheck = 0;
   let tablePrompt, tableQuestion, offeredTable = -1, passedTable = -1;
-  let wantTerracePack = true, liftRide = null, atClub = false;
+  let wantTerracePack = true, liftRide = null, atClub = false, promenade = false;
   const roofLevel = () => salon===2;
   const highTerrace = (x,y) => salon<0 && x>=BL.pokerVault.WALL_X && y>=BL.pokerVault.FOOT-.02;
   const roofApproach = () => avatar && highTerrace(avatar.root.position.x,avatar.root.position.y-avatar.baseY);
@@ -355,6 +355,10 @@
       }
       if(y>.18 && onTerrace(ax,az) && !onTerrace(bx,bz))return false;
       if(salon<0 && terraceScope && !terraceScope.guestsClear(ax,az,bx,bz,actor.bodyRadius))return false;
+      if(salon<0 && (promenade || onTerrace(ax,az))){
+        if(BL.pokerTerrace.promenadeClear(ax,az,bx,bz,actor.bodyRadius))return true;
+        if(promenade && !onTerrace(ax,az))return false;
+      }
       if(salon<=0 && Math.min(az,bz)<-32) return BL.pokerSalons.loungeWalk(salons,ax,az,bx,bz,y,h,actor);
       if(salon>=0) return BL.pokerSalons.clear(salons.solids[salon],currentSalon(),ax,az,bx,bz,actor.bodyRadius);
     }
@@ -507,6 +511,7 @@
     if(actor && actor!==avatar)return 0;
     if(liftRide)return avatar.root.position.y-avatar.baseY;
     if(roofLevel() || roofApproach())return x>=BL.pokerTerrace.inner?0:roofHeight(x,z);
+    if(promenade)return BL.pokerGlazing.TERRACE.top;
     return salon>=0?currentSalon().y:0;
   };
   const salonClamp = (p, r, margin) => {
@@ -524,7 +529,7 @@
     }
     p.y = clamp(p.y, r.y + 0.55, r.y + ceiling);
   };
-  const doorAvailable = i => !liftRide && salons.targets[i].visible && (i === 0
+  const doorAvailable = i => !promenade && !liftRide && salons.targets[i].visible && (i === 0
     ? salon <= 0 && !salons.shelf.opened : BL.pokerSalons.DOORS[i][0] === salon);
   const doorDistance=(i,p)=>{
     if(i===0 && salon===0){
@@ -647,9 +652,10 @@
     if(salon===0 && Math.abs(p.x-r.x)+margin>salons.entry.gap)p.z=Math.min(p.z,front-margin);
     p.y=clamp(p.y,.55,(p.z>front-margin?BL.pokerLoungeDoor.crown(Math.abs(p.x-r.x)+margin):r.h)-margin);return true;
   };
-  const clampTarget = p => { if(upperView()){clampUpper(p);return;} if(byBookcase(p,.20))return; if (salon > 0 || salon===0 && p.z < -34) { salonClamp(p, currentSalon(), 0.6); return; } p.x = clamp(p.x, -22, eastLimit(p, 22)); p.z = clamp(p.z, -34, 34); p.y = clamp(p.y, 0.5, onTerrace(p.x,p.z)?Infinity:7); };
+  const clampTarget = p => { if(promenade){p.y=Math.max(.5,p.y);return;} if(upperView()){clampUpper(p);return;} if(byBookcase(p,.20))return; if (salon > 0 || salon===0 && p.z < -34) { salonClamp(p, currentSalon(), 0.6); return; } p.x = clamp(p.x, -22, eastLimit(p, 22)); p.z = clamp(p.z, -34, 34); p.y = clamp(p.y, 0.5, onTerrace(p.x,p.z)?Infinity:7); };
   const clampCamera = p => {
     const x = p.x, y = p.y, z = p.z;
+    if(promenade){p.y=Math.max(.35,y);return p.y!==y;}
     if(upperView()){clampUpper(p);return p.y!==y;}
     // Stay inside the wall finishes and columns, with clearance for the camera's near plane.
     if(byBookcase(p,.16))return p.x!==x || p.y!==y || p.z!==z;
@@ -1252,7 +1258,7 @@
       presets[name] = { yaw: Math.PI, pitch: 1.48, dist: 7.1 * BL.pokerModels.TABLE_K, target: { x: table.x, y: BL.pokerModels.FELT_Y + 0.03, z: table.z } };
       VIEW_NAMES[name] = `Table ${i + 1}`;
     }
-    visit++; seated = false; salon = -1; liftRide=null; atClub=false;
+    visit++; seated = false; salon = -1; liftRide=null; atClub=false; promenade=false;
     tableView = false;
     owner = new Array(90).fill(null); lastOwner = new Array(90).fill(null); lastBody = new Array(90).fill(null);
     presenceInput = { tables: BL.pokerModels.TABLES, seats: BL.pokerModels.SEATS, remotes: BL.net.remotes, zone: null, live: false, heroId: null, seatOf };
@@ -1298,7 +1304,7 @@
     input = BL.interact.create({ canvas: ctx.canvas, renderer: ctx.renderer, camera, hooks });
     pilot = BL.pilot.create({ renderer: ctx.renderer, canvas: ctx.canvas, camera, hud, presets, landing: "entrance", pitch: [-0.1, 1.3], dist: [3, 32],
       follow: { y: 0.9, min: 3, max: 7, pitch: [0.25, 0.8] },
-      clampTarget, clampCamera, observeOrbit: keepCameraInside, jetpackStatus, ceilingAt: (x,z) => upperView() || onTerrace(x,z) ? Infinity : salon < 0 ? 8.5 : currentSalon().y + currentSalon().h - 0.2, coarse: matchMedia("(pointer: coarse)").matches, mayPossess,
+      clampTarget, clampCamera, observeOrbit: keepCameraInside, jetpackStatus, ceilingAt: (x,z) => promenade || upperView() || onTerrace(x,z) ? Infinity : salon < 0 ? 8.5 : currentSalon().y + currentSalon().h - 0.2, coarse: matchMedia("(pointer: coarse)").matches, mayPossess,
       close: { eyeHeight: 1.1, eyeRatio: 0.95, eyeForward: 0.16, pitch: [-1.35, 1.35], trailingDist: 4, orbitDist: 5, maxStep: 0.6, groundAt: ground } });
     Object.assign(hooks, pilot.hooks, {
       onZoom:(factor,gesture,x,y)=>{
@@ -1421,6 +1427,8 @@
     avatar.root.rotation.y = Math.PI; pilot.possess(avatar);
     // A reload of this tab stands where the Ooga stood on the floor (visit-spot.js), while it can walk on from there.
     const stood = ctx.from === null ? BL.visitSpot.take("poker", "") : null;
+    promenade=!!stood && !loungeStart && Math.abs(stood.y-BL.pokerGlazing.TERRACE.top)<.005 &&
+      !onTerrace(stood.x,stood.z) && BL.pokerTerrace.promenadeClear(stood.x,stood.z,stood.x,stood.z,avatar.bodyRadius);
     entranceView = false;
     if (loungeStart && BL.offlineLoungePack) {
       const door=BL.pokerSalons.DOORS[0];
@@ -1510,9 +1518,9 @@
     renderOpts.directStrength=base.directStrength+.67*dawn;
     if(elapsed>=nextMorningCheck){game.expireDenWins();nextMorningCheck=elapsed+1;}
     if(shownWins!==game.state.emberDen.wins){shownWins=game.state.emberDen.wins;updateWall(shownWins);salons.roofWins(shownWins);}
-    salons.approach(avatar.root.position,salon);
+    if(!promenade)salons.approach(avatar.root.position,salon);
     const passageVisible=salons.shelf.opened;
-    salons.shelf.update(dt,salon<=0?avatar:null,floorWalk);
+    salons.shelf.update(dt,salon<=0 && !promenade?avatar:null,floorWalk);
     if(passageVisible && !salons.shelf.opened)salons.show(salon);
     salons.entry?.slide(salons.shelf.hinge.rotation.y/1.61);
     const hearthPulse=salons.hearth?.(elapsed,calm) ?? 0;
@@ -1528,7 +1536,11 @@
       else bridgeTime-=dt;
     }
     const riding=!!liftRide, tookOffOutside=roofApproach();
+    const fromTerrace=onTerrace(avatar.root.position.x,avatar.root.position.z);
     people.update(dt, elapsed);
+    const pos=avatar.root.position;
+    promenade=(promenade || fromTerrace) && salon<0 && !onTerrace(pos.x,pos.z) && (promenade || pos.y-avatar.baseY<.18) &&
+      BL.pokerTerrace.promenadeClear(pos.x,pos.z,pos.x,pos.z,avatar.bodyRadius);
     if(riding)stepLift(dt);
     else if(pilot.player && (salon<0 || roofLevel())){
       const p=avatar.root.position, feet=p.y-avatar.baseY;
@@ -1541,7 +1553,7 @@
         atClub=insideClub;hud.setAreaLabel(atClub?"21 Club":"Casino rooftop");
       }
     }
-    if(!riding && salon<=0 && salons.shelf.opened){
+    if(!riding && !promenade && salon<=0 && salons.shelf.opened){
       const next=avatar.root.position.z<BL.pokerSalons.DOORS[0][3]?0:-1;
       if(next!==salon){
         if(next!==0)salons.heirlooms.away();
@@ -1669,7 +1681,7 @@
     crowdTimer += dt;
     if (crowdTimer >= 1) { crowdTimer = 0; crowd.setCap(crowdCap()); }
     mirror.phase.update(dt, elapsed); mirror.body.update(dt); mirror.body.time = mirror.phase.ripples.time;
-    if (!liftRide && salon<0 && avatar.root.position.y-avatar.baseY<1 && pilot.player && (seatTable < 0 || pendingStand) && Math.abs(avatar.root.position.x) < BL.bifrostModels.WINDOW.halfW
+    if (!promenade && !liftRide && salon<0 && avatar.root.position.y-avatar.baseY<1 && pilot.player && (seatTable < 0 || pendingStand) && Math.abs(avatar.root.position.x) < BL.bifrostModels.WINDOW.halfW
       && avatar.root.position.z + avatar.bodyRadius > BL.pokerModels.EXIT_Z && !leaving) leaveFloor();
     // All ten table lights fit the lowest renderer tier; selected table goes first.
     const near = selected, lights = renderOpts.lights;

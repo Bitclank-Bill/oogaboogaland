@@ -37884,6 +37884,38 @@ scene("poker", { label: "salons", query: "character=portlandhodl", steps: [{ nam
   const walking=await b.evaluate(`document.activeElement===document.getElementById("scene") && document.querySelector('[data-poker="focus"]').hidden`);
   record("poker floor: Action jumps past tables, and a chair offers its own table only on confirmation",floor.aisle && floor.offered && floor.jumped && floor.passed && floor.confirmed && walking,JSON.stringify({floor,walking}));
 } }] });
+scene("poker", { label: "waterfront", steps: [{ name: "Walk the casino waterfront", why: "playthrough: the marble promenade makes a continuous circuit from either end of the terrace", run: async b => {
+  await b.evaluate(`document.querySelector('[data-intro="poker"] .game-intro-go').click()`);
+  const lap=await b.evaluate(`(()=>{
+    const D=BL.scenes.poker.debug,player=D.pilot.player,p=player.root.position,G=BL.pokerGlazing;
+    D.pilot.navigate({position:{x:21,y:0,z:0},yaw:0,pitch:.15,dist:3});
+    const step=(key,axis,destination)=>{
+      const dir={a:-1,d:1,w:-1,s:1}[key],code="Key"+key.toUpperCase();
+      window.dispatchEvent(new KeyboardEvent("keydown",{key,code}));
+      for(let i=0;i<600 && dir*(destination-p[axis])>.01;i++)__ooga.advance(.06,.06);
+      window.dispatchEvent(new KeyboardEvent("keyup",{key,code}));
+      return dir*(destination-p[axis])<=.01;
+    };
+    const grounded=()=>player.hop===0 && Math.abs(p.y-player.baseY-G.TERRACE.top)<.015;
+    const east=step("d","x",26.35),north=step("w","z",-38.85);
+    const atVault=step("a","x",0) && grounded() && D.poker.salon===-1 && D.poker.room.hall.aquarium.root.visible;
+    __ooga.advance(.4,.04);
+    const viewAtVault=D.camera.target.z < -36;
+    const west=step("a","x",-26.45),alongWater=step("s","z",0) && grounded();
+    __ooga.advance(.4,.04);
+    const viewAtWater=D.camera.target.x < -24;
+    const front=step("s","z",38.8),pastMirror=step("d","x",26.4) && grounded() && D.poker.salon===-1;
+    const back=step("w","z",0),hall=step("a","x",22) && Math.abs(p.y-player.baseY)<.02;
+    const T=BL.pokerTerrace,r=player.bodyRadius,{wall,booth}=BL.pokerClub;
+    const fame=wall.z===-booth.z && wall.x===booth.x && Math.cos(wall.yaw)<-.99 &&
+      T.clear(wall.x,wall.z-2,wall.x,wall.z-1,r) && !T.clear(wall.x,wall.z-1,wall.x,wall.z,r);
+    return {fame,east,north,atVault,viewAtVault,west,alongWater,viewAtWater,front,pastMirror,back,hall,
+      rail:!T.promenadeClear(-26,0,-29,0,r),glass:!T.promenadeClear(0,-39,0,-36,r),
+      widths:Math.abs(G.TERRACE.out-G.SILL.outer-3.5)<1e-6 && Math.abs(G.TERRACE.endOut-G.SILL.endOuter-3.4)<1e-6};
+  })()`);
+  record("poker waterfront: walk a full lap past the vault, bars and mirror, look out over the basin and return through the terrace",
+    Object.values(lap).every(Boolean),JSON.stringify(lap));
+} }] });
 scene("poker", { label: "rooftop", query: "character=portlandhodl", steps: [{ name: "First visit by terrace and rooftop elevator", why: "playthrough: walk across the roof and call the lift down before the upward ride unlocks", run: async b => {
   await b.evaluate(`document.querySelector('[data-intro="poker"] .game-intro-go').click()`);
   const rooftop=await b.evaluate(`(()=>{

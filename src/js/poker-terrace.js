@@ -445,22 +445,35 @@
     fixtures.push({x,z,r:.50},{x:planterX,z:planterZ,r:.50});
     for(let i=0;i<7;i++){const a=.12+i*(Math.PI-.24)/6;fixtures.push({x:x+1.48*Math.cos(a),z:z+side*1.48*Math.sin(a),r:.52});}
   }
-  // Reject a sweep through the wall beside the opening, including diagonal steps from the terrace.
-  const clear = (ax,az,bx,bz,r) => {
-    if(Math.max(ax,bx)<=23-r) return true;
+  const fixturesClear = (ax,az,bx,bz,r) => {
     for(const f of BL.pokerClub.fixtures) if(BL.pokerModels.crosses(ax,az,bx,bz,r,f)) return false;
-    const opening=BL.pokerGlazing.OPEN-r;
-    if(bx>outer(bz)-r || (bx>23-r && Math.abs(bz)>(bx<inner+r?opening:halfSpan-r))) return false;
-    for(let i=0;i<2;i++){
-      const x=i?inner+r:23-r;
-      if((ax-x)*(bx-x)<0 && Math.abs(az+(bz-az)*(x-ax)/(bx-ax))>opening) return false;
-    }
     const dx=bx-ax,dz=bz-az,dd=dx*dx+dz*dz;
     for(const f of fixtures){
       const u=dd?Math.max(0,Math.min(1,((f.x-ax)*dx+(f.z-az)*dz)/dd)):0;
       if((ax+dx*u-f.x)**2+(az+dz*u-f.z)**2<(f.r+r)**2) return false;
     }
     return true;
+  };
+  // Reject a sweep through the wall beside the opening, including diagonal steps from the terrace.
+  const clear = (ax,az,bx,bz,r) => {
+    if(Math.max(ax,bx)<=23-r) return true;
+    const opening=BL.pokerGlazing.OPEN-r;
+    if(bx>outer(bz)-r || (bx>23-r && Math.abs(bz)>(bx<inner+r?opening:halfSpan-r))) return false;
+    for(let i=0;i<2;i++){
+      const x=i?inner+r:23-r;
+      if((ax-x)*(bx-x)<0 && Math.abs(az+(bz-az)*(x-ax)/(bx-ax))>opening) return false;
+    }
+    return fixturesClear(ax,az,bx,bz,r);
+  };
+  const {SILL,RAIL}=BL.pokerGlazing;
+  const hall={x:0,z:0,hx:SILL.outer,hz:SILL.endOuter};
+  // The promenade joins the loggia inside both end posts. Keep a swept body between the sill and rail.
+  const promenadeClear=(ax,az,bx,bz,r)=>{
+    const limit=RAIL.x-.10-r;
+    if(Math.abs(ax)>limit || Math.abs(bx)>limit || Math.max(Math.abs(az),Math.abs(bz))>RAIL.z-.10-r)return false;
+    if(BL.pokerModels.crosses(ax,az,bx,bz,r,hall))return false;
+    // Only the loggia has furniture. All other stretches are clear between the sill and the rail.
+    return Math.max(ax,bx)<inner || Math.min(az,bz)>halfSpan || Math.max(az,bz)<-halfSpan || fixturesClear(ax,az,bx,bz,r);
   };
   // Seated guests and roaming waiters use the crowd graph. These parties stay at their rail or bar.
   const company=(root,lite)=>{
@@ -570,7 +583,7 @@
       p.push(beam(x,-.075,z,xx,-.075,zz,.065,brass));
     }
     p.push(apron);install();
-    const perimeter=[[inner,-BL.pokerGlazing.OPEN],...rim,[inner,BL.pokerGlazing.OPEN]],points=[];
+    const perimeter=[[RAIL.x,-halfSpan],...rim.slice(1,-1),[RAIL.x,halfSpan]],points=[];
     for(let i=0;i<perimeter.length-1;i++){
       const [x,z]=perimeter[i],[xx,zz]=perimeter[i+1],n=Math.ceil(Math.hypot(xx-x,zz-z)/3.4);
       for(let k=0;k<n;k++)points.push([x+(xx-x)*k/n,z+(zz-z)*k/n]);
@@ -661,5 +674,5 @@
     for(const y of [-.43,-.13,.23,.60]){const r=y>.2?.165:.134;const band=turned(0,0,0,[[r,y],[r+.007,y+.016],[r,y+.044]],dark,16);S.addChild(pitch,S.createNode({geometry:M.turnedX(band,Math.PI/2)}));}
     const target=add(pitch,M.turnedX(tube,Math.PI/2));return {root,yaw,pitch,target,station};
   };
-  BL.pokerTerrace=Object.freeze({station,inner,halfSpan,outer,contains,clear,serviceX,cocktail,bar,roofBar,mount,build});
+  BL.pokerTerrace=Object.freeze({station,inner,halfSpan,outer,contains,clear,promenadeClear,serviceX,cocktail,bar,roofBar,mount,build});
 })();

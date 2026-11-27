@@ -364,12 +364,15 @@
     out.ok = false;
     if (level < ARC_NEAR) { out.reason = "near"; return false; }
     if (level > MAX_THROW) { out.reason = "far"; return false; }
-    const vh = Math.min(ARC_MAX, Math.max(ARC_MIN, ARC_BASE + ARC_GAIN * level)), T = level / vh;
+    // Size the throw for the whole crossing, including the run from the window to the rail.
+    const normalShare = pane ? (dx * pane.nx + dz * pane.nz) / level : 1;
+    if (normalShare <= 1e-6) { out.reason = "none"; return false; }
+    const crossing = level + (pane ? pane.rail.dist / (normalShare * THROUGH) : 0);
+    const vh = Math.min(ARC_MAX, Math.max(ARC_MIN, ARC_BASE + ARC_GAIN * crossing)), T = level / vh;
     const vx = dx / T, vz = dz / T, vy = dy / T + 0.5 * GRAVITY * T, speed = Math.sqrt(vx * vx + vy * vy + vz * vz);
     if (speed < SPEED_MIN || speed > SPEED_MAX) { out.reason = "speed"; return false; }
     if (pane) {
       const vn = vx * pane.nx + vz * pane.nz;
-      if (vn <= 1e-6) { out.reason = "none"; return false; }
       const toRail = pane.rail.dist / (vn * THROUGH);
       if (py + (vy - GRAVITY * T) * toRail - .5 * GRAVITY * toRail * toRail - BODY_CLEAR <= pane.rail.top) { out.reason = "low"; return false; }
       if (vy > 0 && vy / GRAVITY < T && from.y + vy * vy / (2 * GRAVITY) > pane.ceiling - BODY_CLEAR) { out.reason = "high"; return false; }
