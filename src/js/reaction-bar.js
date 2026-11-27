@@ -129,7 +129,9 @@
         grid.scrollLeft += e.deltaY;
       }, { passive: false });
       // A mouse or pen drag (touch scrolls natively): past MOVE_PX the row follows the pointer with snapping held off,
-      // and on letting go it settles on the nearest cell.
+      // and on letting go it settles on the nearest cell, or on either end within half a cell of it. A press let go
+      // off the row before it dragged (never captured, so its pointerup went elsewhere) is dropped on its next move
+      // here, with the button no longer held.
       let dragPointer = null, dragX = 0, dragLeft = 0, dragging = false;
       grid.addEventListener("pointerdown", (e) => {
         if (e.pointerType === "touch" || e.button !== 0 || e.isPrimary === false || overflow() < 4) return;
@@ -137,6 +139,7 @@
       });
       grid.addEventListener("pointermove", (e) => {
         if (e.pointerId !== dragPointer) return;
+        if (!(e.buttons & 1)) { if (!dragging) dragPointer = null; return; }
         const dx = e.clientX - dragX;
         if (!dragging) {
           if (Math.abs(dx) <= MOVE_PX) return;
@@ -155,7 +158,8 @@
         const left = grid.scrollLeft;
         delete grid.dataset.dragging;
         grid.scrollLeft = left;
-        if (step > 0) grid.scrollTo({ left: Math.round(left / step) * step, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+        const max = overflow(), target = max - left < step / 2 ? max : left < step / 2 ? 0 : Math.round(left / step) * step;
+        if (step > 0) grid.scrollTo({ left: target, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
       };
       grid.addEventListener("pointerup", endDrag);
       grid.addEventListener("pointercancel", endDrag);
