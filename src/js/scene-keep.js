@@ -172,6 +172,7 @@
     // The castle: the land, the curtain between its six towers, the gatehouse in the front wall and the keep across the
     // yard.
     s.crowns = []; s.drums = []; s.ladders = []; s.towers = []; s.cbdcDrums = []; s.storjDrums = [];
+    const outpostTowers = [];
     // Outpost Island's stone in a group of its own, hidden from a view far off it (`OUTPOST_SEEN`).
     s.outpost = createNode({});
     addChild(root, s.outpost);
@@ -190,10 +191,12 @@
       else if (p.tag === "cbdc-turret") s.cbdcDrums.push(node);
       // A tower of Cold Storj's fjord, in `L.STORJ.turrets`' order.
       else if (p.tag === "storj-tower") s.storjDrums.push(node);
-      // Outpost Island's towers, after the castle's own in `L.GALLERIES`' order.
-      else if (p.tag === "outpost-tower") s.towers.push(node);
+      // Outpost Island's towers, set aside to follow the castle's own in `L.GALLERIES`' order (`castleParts` lays
+      // them first).
+      else if (p.tag === "outpost-tower") outpostTowers.push(node);
       addChild(p.tag === "outpost" || p.tag === "outpost-tower" ? s.outpost : root, node);
     }
+    s.towers.push(...outpostTowers);
     // A flag on the tip of every spire.
     s.flags = [];
     flags.plant(root, root, 0, s.flags);
@@ -4262,6 +4265,9 @@
       if (!w) { if (hud) hud.toast(LINES.away); return true; }
       const g = w.at, sn = Math.sin(g.yaw), cs = Math.cos(g.yaw), a = g.helm.a + KM.HELM.z * w.sail.hs, c = 1.1 * w.sail.hs;
       f.seat.walkAt.x = g.x + sn * a + cs * c; f.seat.walkAt.z = g.z + cs * a - sn * c; f.seat.floor = L.SEA + g.helm.y; f.seat.lockMovement = false;
+      // An escort climbed aboard leaves its duty there and then, as one whose helm is taken does, so it is not sent
+      // home from under its new crew when the rowing stops (`escortSnap`).
+      if (w.at.role === "escort") w.sail.away = true;
       hud.toast("You climb aboard. Take her wheel to sail her.");
       return false;
     }
@@ -6091,8 +6097,9 @@
         else if (wv > 0.5) { let back = Math.atan2(wx, wz) - g.yaw; back = Math.atan2(Math.sin(back), Math.cos(back)); const m = Math.max(0.25, Math.cos(back)); wx *= m; wz *= m; }
         // Home, it comes to rest there before it turns to face the castle island.
         if (!far && !rowing) wx = wz = 0;
+        // Backing off (`ESCORT_BACK`), it gathers no way ahead: the astern below has the helm alone.
         const accel = catching ? M.catchAccel : M.accel;
-        w.vx += clamp(wx - w.vx, -accel * dt, accel * dt); w.vz += clamp(wz - w.vz, -accel * dt, accel * dt);
+        if (!(w.backT > 0)) { w.vx += clamp(wx - w.vx, -accel * dt, accel * dt); w.vz += clamp(wz - w.vz, -accel * dt, accel * dt); }
         // Turning the short way round would swing its bow or stern onto something (a shore, most often): it comes round
         // the long way instead, and keeps at it until the short way and the long way agree. A turn it cannot make leaves
         // it free to move on as it heads.
