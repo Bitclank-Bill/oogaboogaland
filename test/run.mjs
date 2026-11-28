@@ -50960,14 +50960,15 @@ const oogaChatChecks = async () => {
       Object.values(lifecycle).every(Boolean), JSON.stringify(lifecycle));
   } finally { rmSync(out, { recursive: true, force: true }); }
 
-  // M mutes only a plain press outside a field, composition, modifier or repeat.
+  // M mutes outside a field, composition, Ctrl/Meta/Alt or repeat; Shift+M too, as on the island.
   const D = load(["src/ooga-chat/ooga-chat-device.js"], { window: {} }).oogaChatDevice;
   const key = (extra = {}) => ({ key: "m", target: { tagName: "BUTTON", closest: () => null }, ...extra });
   const keys = { plain: D.isMuteKey(key()) && D.isMuteKey(key({ key: "M" })) && D.isMuteKey(key({ target: null })),
-    refused: [{ repeat: true }, { isComposing: true }, { keyCode: 229 }, { ctrlKey: true }, { metaKey: true }, { altKey: true }, { shiftKey: true }, { key: "n" },
+    shifted: D.isMuteKey(key({ key: "M", shiftKey: true })),
+    refused: [{ repeat: true }, { isComposing: true }, { keyCode: 229 }, { ctrlKey: true }, { metaKey: true }, { altKey: true }, { key: "n" },
       { target: { tagName: "INPUT" } }, { target: { tagName: "TEXTAREA" } }, { target: { tagName: "DIV", isContentEditable: true } },
       { target: { tagName: "SPAN", closest: () => ({}) } }].every((extra) => !D.isMuteKey(key(extra))) };
-  record("Ooga Chat M key: a plain M mutes, never while typing in a field or editable text, composing, holding a modifier or repeating",
+  record("Ooga Chat M key: M and Shift+M mute (regression: Shift+M was refused), never while typing in a field or editable text, composing, holding Ctrl, Meta or Alt or repeating",
     Object.values(keys).every(Boolean), JSON.stringify(keys));
 
   // Ooga Chat's marks are the island's own: DSB Land's paths as the island draws them.
